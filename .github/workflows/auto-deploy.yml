@@ -1,0 +1,17 @@
+name: autodeployment for main branch
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: self-hosted
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: deploy on pkg.easy-markets.com
+      run: |
+        cd ~/server.sys.admin
+        ansible-playbook deploy-pkg-prd.yml

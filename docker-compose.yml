@@ -1,0 +1,39 @@
+services:
+  payload:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_USE_LIVE_DATA=true
+        - NEXT_PUBLIC_PAYLOAD_URL=https://pkg.easy-markets.com
+        - NEXT_PUBLIC_PAYLOAD_API_KEY=0e5e6e6b-e7a9-4d2e-a4dc-936972079f6f
+    restart: always
+    ports:
+      - '3001:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-payload}
+      - PAYLOAD_SECRET=${PAYLOAD_SECRET}
+      - NEXT_PUBLIC_USE_LIVE_DATA=true
+      - NEXT_PUBLIC_PAYLOAD_URL=https://pkg.easy-markets.com
+      - NEXT_PUBLIC_PAYLOAD_API_KEY=0e5e6e6b-e7a9-4d2e-a4dc-936972079f6f
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - POSTGRES_DB=${POSTGRES_DB:-payload}
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
