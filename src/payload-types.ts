@@ -72,6 +72,11 @@ export interface Config {
     clients: Client;
     'journey-tracking': JourneyTracking;
     reports: Report;
+    events: Event;
+    'analytics-daily': AnalyticsDaily;
+    'template-mappings': TemplateMapping;
+    'notifications-cache': NotificationsCache;
+    campaigns: Campaign;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -84,6 +89,11 @@ export interface Config {
     clients: ClientsSelect<false> | ClientsSelect<true>;
     'journey-tracking': JourneyTrackingSelect<false> | JourneyTrackingSelect<true>;
     reports: ReportsSelect<false> | ReportsSelect<true>;
+    events: EventsSelect<false> | EventsSelect<true>;
+    'analytics-daily': AnalyticsDailySelect<false> | AnalyticsDailySelect<true>;
+    'template-mappings': TemplateMappingsSelect<false> | TemplateMappingsSelect<true>;
+    'notifications-cache': NotificationsCacheSelect<false> | NotificationsCacheSelect<true>;
+    campaigns: CampaignsSelect<false> | CampaignsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -106,22 +116,34 @@ export interface Config {
   };
 }
 export interface UserAuthOperations {
-  forgotPassword: {
-    email: string;
-    password: string;
-  };
-  login: {
-    email: string;
-    password: string;
-  };
+  forgotPassword:
+    | {
+        email: string;
+      }
+    | {
+        username: string;
+      };
+  login:
+    | {
+        email: string;
+        password: string;
+      }
+    | {
+        password: string;
+        username: string;
+      };
   registerFirstUser: {
-    email: string;
     password: string;
+    username: string;
+    email?: string;
   };
-  unlock: {
-    email: string;
-    password: string;
-  };
+  unlock:
+    | {
+        email: string;
+      }
+    | {
+        username: string;
+      };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -129,12 +151,27 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
+  name: string;
+  /**
+   * Determines which app the user sees. Sales → Packages, Marketing → Analytics.
+   */
+  department: 'sales' | 'marketing';
+  /**
+   * Manager sees everything in their app. Member is scoped (sales members are region-limited).
+   */
+  level: 'manager' | 'member';
+  /**
+   * Only used for sales members. Leave empty for managers, marketing, and super-admins.
+   */
+  regions?: ('Brazil' | 'South Africa' | 'INT' | 'MENA' | 'LATAM' | 'ROW')[] | null;
+  superAdmin?: boolean | null;
   updatedAt: string;
   createdAt: string;
   enableAPIKey?: boolean | null;
   apiKey?: string | null;
   apiKeyIndex?: string | null;
-  email: string;
+  email?: string | null;
+  username: string;
   resetPasswordToken?: string | null;
   resetPasswordExpiration?: string | null;
   salt?: string | null;
@@ -239,6 +276,158 @@ export interface Report {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "events".
+ */
+export interface Event {
+  id: number;
+  channel: 'email' | 'push';
+  /**
+   * Which system produced the event. Email=mailgun (source of truth); push=onesignal_*.
+   */
+  source: 'mailgun' | 'onesignal_global' | 'onesignal_china';
+  eventType:
+    | 'accepted'
+    | 'delivered'
+    | 'opened'
+    | 'clicked'
+    | 'bounced_hard'
+    | 'bounced_soft'
+    | 'complained'
+    | 'unsubscribed'
+    | 'failed';
+  /**
+   * Email address or push player_id.
+   */
+  recipient?: string | null;
+  /**
+   * Mailgun message-id — stable per email, used for dedup.
+   */
+  messageId?: string | null;
+  /**
+   * OneSignal notification_id — key to resolve template.
+   */
+  notificationId?: string | null;
+  /**
+   * Canonical template key (resolved via TemplateMappings).
+   */
+  templateKey?: string | null;
+  /**
+   * Raw per-app template id.
+   */
+  templateId?: string | null;
+  region?: string | null;
+  timestamp: string;
+  /**
+   * First open/click for this recipient+message (for unique-rate math).
+   */
+  isUnique?: boolean | null;
+  /**
+   * Raw provider payload snippet (geo, client, etc).
+   */
+  metadata?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "analytics-daily".
+ */
+export interface AnalyticsDaily {
+  id: number;
+  date: string;
+  channel: 'email' | 'push';
+  source: 'mailgun' | 'onesignal_global' | 'onesignal_china';
+  templateKey?: string | null;
+  templateName?: string | null;
+  region?: string | null;
+  sent?: number | null;
+  delivered?: number | null;
+  uniqueOpens?: number | null;
+  totalOpens?: number | null;
+  uniqueClicks?: number | null;
+  totalClicks?: number | null;
+  hardBounces?: number | null;
+  softBounces?: number | null;
+  complaints?: number | null;
+  unsubscribes?: number | null;
+  failed?: number | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "template-mappings".
+ */
+export interface TemplateMapping {
+  id: number;
+  /**
+   * Canonical key, e.g. welcome_bronze.
+   */
+  templateKey: string;
+  templateName: string;
+  /**
+   * Auto-derived group (prefix before the first " - "). Used for the Family view.
+   */
+  family?: string | null;
+  /**
+   * Raw template id in the global OneSignal app.
+   */
+  globalTemplateId?: string | null;
+  /**
+   * Raw template id in the China OneSignal app.
+   */
+  chinaTemplateId?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "notifications-cache".
+ */
+export interface NotificationsCache {
+  id: number;
+  notificationId: string;
+  source?: ('onesignal_global' | 'onesignal_china') | null;
+  appId?: string | null;
+  templateId?: string | null;
+  templateKey?: string | null;
+  firstSeen?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "campaigns".
+ */
+export interface Campaign {
+  id: number;
+  /**
+   * e.g. Q3 Onboarding, Summer Promo.
+   */
+  name: string;
+  description?: string | null;
+  status?: ('active' | 'paused' | 'archived') | null;
+  /**
+   * Assign one or more templates to this campaign. A template can be in several campaigns.
+   */
+  templates?: (number | TemplateMapping)[] | null;
+  /**
+   * Optional hex color for charts, e.g. #075c8f.
+   */
+  color?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -280,6 +469,26 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'reports';
         value: number | Report;
+      } | null)
+    | ({
+        relationTo: 'events';
+        value: number | Event;
+      } | null)
+    | ({
+        relationTo: 'analytics-daily';
+        value: number | AnalyticsDaily;
+      } | null)
+    | ({
+        relationTo: 'template-mappings';
+        value: number | TemplateMapping;
+      } | null)
+    | ({
+        relationTo: 'notifications-cache';
+        value: number | NotificationsCache;
+      } | null)
+    | ({
+        relationTo: 'campaigns';
+        value: number | Campaign;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -328,12 +537,18 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  name?: T;
+  department?: T;
+  level?: T;
+  regions?: T;
+  superAdmin?: T;
   updatedAt?: T;
   createdAt?: T;
   enableAPIKey?: T;
   apiKey?: T;
   apiKeyIndex?: T;
   email?: T;
+  username?: T;
   resetPasswordToken?: T;
   resetPasswordExpiration?: T;
   salt?: T;
@@ -427,6 +642,91 @@ export interface ReportsSelect<T extends boolean = true> {
   unsub?: T;
   unsubPct?: T;
   failed?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "events_select".
+ */
+export interface EventsSelect<T extends boolean = true> {
+  channel?: T;
+  source?: T;
+  eventType?: T;
+  recipient?: T;
+  messageId?: T;
+  notificationId?: T;
+  templateKey?: T;
+  templateId?: T;
+  region?: T;
+  timestamp?: T;
+  isUnique?: T;
+  metadata?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "analytics-daily_select".
+ */
+export interface AnalyticsDailySelect<T extends boolean = true> {
+  date?: T;
+  channel?: T;
+  source?: T;
+  templateKey?: T;
+  templateName?: T;
+  region?: T;
+  sent?: T;
+  delivered?: T;
+  uniqueOpens?: T;
+  totalOpens?: T;
+  uniqueClicks?: T;
+  totalClicks?: T;
+  hardBounces?: T;
+  softBounces?: T;
+  complaints?: T;
+  unsubscribes?: T;
+  failed?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "template-mappings_select".
+ */
+export interface TemplateMappingsSelect<T extends boolean = true> {
+  templateKey?: T;
+  templateName?: T;
+  family?: T;
+  globalTemplateId?: T;
+  chinaTemplateId?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "notifications-cache_select".
+ */
+export interface NotificationsCacheSelect<T extends boolean = true> {
+  notificationId?: T;
+  source?: T;
+  appId?: T;
+  templateId?: T;
+  templateKey?: T;
+  firstSeen?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "campaigns_select".
+ */
+export interface CampaignsSelect<T extends boolean = true> {
+  name?: T;
+  description?: T;
+  status?: T;
+  templates?: T;
+  color?: T;
   updatedAt?: T;
   createdAt?: T;
 }

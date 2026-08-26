@@ -10,6 +10,11 @@ import { Media } from './collections/Media'
 import Clients from './collections/Clients'
 import JourneyTracking from './collections/JourneyTracking'
 import Reports from './collections/Reports'
+// Analytics collections
+import Events from './collections/Events'
+import AnalyticsDaily from './collections/AnalyticsDaily'
+import { TemplateMappings, NotificationsCache } from './collections/AnalyticsSupport'
+import Campaigns from './collections/Campaigns'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -21,7 +26,19 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Media, Clients, JourneyTracking, Reports],
+  collections: [
+    Users,
+    Media,
+    Clients,
+    JourneyTracking,
+    Reports,
+    // Analytics
+    Events,
+    AnalyticsDaily,
+    TemplateMappings,
+    NotificationsCache,
+    Campaigns,
+  ],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
