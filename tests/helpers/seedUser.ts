@@ -1,9 +1,17 @@
 import { getPayload } from 'payload'
 import config from '../../src/payload.config.js'
 
+// Must satisfy the Users collection's required fields (name/username/department/
+// level) — it gained those in the auth rewrite, and payload.create is typed against
+// them. superAdmin so admin e2e tests can reach both apps.
 export const testUser = {
+  name: 'Dev Test User',
+  username: 'dev.test',
   email: 'dev@payloadcms.com',
   password: 'test',
+  department: 'sales' as const,
+  level: 'manager' as const,
+  superAdmin: true,
 }
 
 /**
@@ -16,8 +24,8 @@ export async function seedTestUser(): Promise<void> {
   await payload.delete({
     collection: 'users',
     where: {
-      email: {
-        equals: testUser.email,
+      username: {
+        equals: testUser.username,
       },
     },
   })
@@ -38,8 +46,8 @@ export async function cleanupTestUser(): Promise<void> {
   await payload.delete({
     collection: 'users',
     where: {
-      email: {
-        equals: testUser.email,
+      username: {
+        equals: testUser.username,
       },
     },
   })

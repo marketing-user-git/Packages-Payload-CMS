@@ -1,7 +1,8 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { LOGO_B64 } from './Dashboard'
 import { exportDailyRows, exportGroups, exportSummary } from '@/lib/analytics/exportReport'
+import { readParam, writeParams, onPopState } from '@/lib/urlState'
 import {
   LineChart,
   Line,
@@ -84,7 +85,16 @@ export default function AnalyticsDashboard({ user, onBack, onLogout }) {
   const [channel, setChannel] = useState('All')
   const [region, setRegion] = useState('All')
   const [campaign, setCampaign] = useState('All')
-  const [tab, setTab] = useState('Overview')
+  // Mirrored into ?tab= so Back steps through tabs before leaving the app.
+  const [tab, setTabState] = useState(() => readParam('tab', TABS) || 'Overview')
+
+  const setTab = useCallback((t) => {
+    setTabState(t)
+    // Overview is the default, so it stays out of the URL.
+    writeParams({ tab: t === 'Overview' ? null : t })
+  }, [])
+
+  useEffect(() => onPopState(() => setTabState(readParam('tab', TABS) || 'Overview')), [])
   const [events, setEvents] = useState(null) // lazily loaded, Timing tab only
 
   useEffect(() => {

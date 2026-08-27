@@ -1,168 +1,2622 @@
+/* ==========================================================================
+   easyMarkets Internal Tools
+   App Shell / Login / App Picker
+   ========================================================================== */
+
+/* ==========================================================================
+   VARIABLES
+   ========================================================================== */
+
 :root {
-  --font-mono: 'Roboto Mono', monospace;
+  --green: #84c561;
+  --green-dark: #6aad49;
+  --green-soft: #b9ef8d;
+
+  --blue: #2b8cff;
+  --blue-dark: #075c8f;
+  --blue-soft: #7dc4ff;
+
+  --text: #ffffff;
+  --text-soft: rgba(255, 255, 255, 0.72);
+  --text-muted: rgba(255, 255, 255, 0.5);
+
+  --navy-0: #020b18;
+  --navy-1: #06162a;
+  --navy-2: #0c2744;
+
+  --white: #ffffff;
+
+  --border: rgba(255, 255, 255, 0.13);
+  --border-soft: rgba(255, 255, 255, 0.08);
+
+  --input-border: #dbe4ea;
+  --input-text: #213547;
+
+  --danger: #d93b3b;
 }
 
-* {
+/* ==========================================================================
+   RESET
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-html {
-  font-size: 18px;
-  line-height: 32px;
-
-  background: rgb(0, 0, 0);
-  -webkit-font-smoothing: antialiased;
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
 }
 
-html,
-body,
-#app {
-  height: 100%;
+html {
+  background: var(--navy-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  font-family: system-ui;
-  font-size: 18px;
-  line-height: 32px;
+  min-height: 100vh;
 
   margin: 0;
-  color: rgb(1000, 1000, 1000);
 
-  @media (max-width: 1024px) {
-    font-size: 15px;
-    line-height: 24px;
-  }
-}
+  font-family:
+    Roboto,
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
 
-img {
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
-h1 {
-  margin: 40px 0;
-  font-size: 64px;
-  line-height: 70px;
-  font-weight: bold;
-
-  @media (max-width: 1024px) {
-    margin: 24px 0;
-    font-size: 42px;
-    line-height: 42px;
-  }
-
-  @media (max-width: 768px) {
-    font-size: 38px;
-    line-height: 38px;
-  }
-
-  @media (max-width: 400px) {
-    font-size: 32px;
-    line-height: 32px;
-  }
-}
-
-p {
-  margin: 24px 0;
-
-  @media (max-width: 1024px) {
-    margin: calc(var(--base) * 0.75) 0;
-  }
-}
-
-a {
-  color: currentColor;
-
-  &:focus {
-    opacity: 0.8;
-    outline: none;
-  }
-
-  &:active {
-    opacity: 0.7;
-    outline: none;
-  }
-}
-
-svg {
-  vertical-align: middle;
-}
-
-body{
   line-height: normal;
 }
 
-.home {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: center;
-  height: 100vh;
-  padding: 45px;
-  max-width: 1024px;
-  margin: 0 auto;
+button,
+input {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+svg {
+  display: block;
+}
+
+/* ==========================================================================
+   MAIN BACKGROUND
+   ========================================================================== */
+
+.screenBg {
+  position: relative;
+
+  min-height: 100vh;
+  width: 100%;
+
+  display: grid;
+  place-items: center;
+
   overflow: hidden;
 
-  @media (max-width: 400px) {
-    padding: 24px;
+  padding: 32px;
+
+  background:
+    radial-gradient(circle at 8% 88%, rgba(132, 197, 97, 0.3), transparent 27%),
+    radial-gradient(circle at 95% 4%, rgba(81, 178, 233, 0.38), transparent 30%),
+    radial-gradient(circle at 70% 100%, rgba(51, 108, 188, 0.14), transparent 30%),
+    linear-gradient(120deg, var(--navy-0) 0%, var(--navy-1) 43%, var(--navy-2) 100%);
+}
+
+.screenBg::before {
+  content: '';
+
+  position: absolute;
+  inset: 0;
+
+  pointer-events: none;
+
+  background:
+    radial-gradient(circle at 80% 12%, rgba(255, 255, 255, 0.06), transparent 18%),
+    radial-gradient(circle at 15% 80%, rgba(255, 255, 255, 0.035), transparent 20%);
+}
+
+.screenBg::after {
+  content: '';
+
+  position: absolute;
+  inset: 0;
+
+  pointer-events: none;
+
+  opacity: 0.15;
+
+  background-image: radial-gradient(rgba(255, 255, 255, 0.13) 0.7px, transparent 0.7px);
+
+  background-size: 4px 4px;
+
+  mask-image: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.28), transparent);
+
+  -webkit-mask-image: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.28), transparent);
+}
+
+/* ==========================================================================
+   LOADER
+   ========================================================================== */
+
+.loaderShell {
+  position: relative;
+  z-index: 5;
+
+  width: 58px;
+  height: 58px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+
+  background: rgba(255, 255, 255, 0.05);
+
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.loader {
+  width: 25px;
+  height: 25px;
+
+  border-radius: 50%;
+
+  border: 3px solid rgba(255, 255, 255, 0.17);
+  border-top-color: var(--green);
+
+  animation: emspin 0.8s linear infinite;
+}
+
+@keyframes emspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==========================================================================
+   LOGIN
+   ========================================================================== */
+
+.loginWrap {
+  position: relative;
+  z-index: 4;
+
+  width: 100%;
+
+  display: grid;
+  place-items: center;
+}
+
+.loginGlass {
+  width: 390px;
+  max-width: 100%;
+
+  padding: 36px;
+
+  border-radius: 22px;
+
+  border: 1px solid rgba(255, 255, 255, 0.56);
+
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(243, 248, 251, 0.93));
+
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.loginBrand {
+  margin-bottom: 28px;
+}
+
+.brandLogoDark {
+  width: auto;
+  height: 36px;
+}
+
+.brandLogoLight {
+  width: auto;
+  height: 38px;
+}
+
+.loginTitle {
+  margin-bottom: 5px;
+
+  font-size: 25px;
+  line-height: 1.15;
+
+  font-weight: 800;
+  letter-spacing: -0.5px;
+
+  color: #203446;
+}
+
+.loginSubtitle {
+  margin-bottom: 28px;
+
+  font-size: 13px;
+
+  color: #71818e;
+}
+
+.formGroup {
+  margin-bottom: 16px;
+}
+
+.label {
+  display: block;
+
+  margin-bottom: 7px;
+
+  font-size: 12px;
+  font-weight: 700;
+
+  color: #60717f;
+}
+
+.field {
+  width: 100%;
+  height: 48px;
+
+  padding: 0 13px;
+
+  border: 1px solid var(--input-border);
+  border-radius: 11px;
+
+  outline: none;
+
+  font-size: 14px;
+
+  color: var(--input-text);
+
+  background: #ffffff;
+
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.field::placeholder {
+  color: #acb7bf;
+}
+
+.field:hover {
+  border-color: #c9d6de;
+}
+
+.field:focus {
+  border-color: var(--green);
+
+  box-shadow:
+    0 0 0 4px rgba(132, 197, 97, 0.12),
+    0 6px 18px rgba(40, 70, 90, 0.05);
+}
+
+.passwordWrap {
+  position: relative;
+}
+
+.passwordWrap .field {
+  padding-right: 60px;
+}
+
+.showBtn {
+  position: absolute;
+
+  top: 50%;
+  right: 12px;
+
+  transform: translateY(-50%);
+
+  padding: 5px;
+
+  border: 0;
+  outline: 0;
+
+  cursor: pointer;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  color: #6f7f8d;
+
+  background: transparent;
+}
+
+.showBtn:hover {
+  color: #344d60;
+}
+
+.errorBox {
+  margin-top: 10px;
+
+  padding: 10px 12px;
+
+  border: 1px solid rgba(217, 59, 59, 0.16);
+  border-radius: 9px;
+
+  font-size: 12px;
+  line-height: 1.4;
+
+  color: var(--danger);
+
+  background: rgba(217, 59, 59, 0.05);
+}
+
+.primaryAction {
+  width: 100%;
+  height: 50px;
+
+  margin-top: 22px;
+
+  border: 0;
+  border-radius: 12px;
+
+  cursor: pointer;
+
+  font-size: 14px;
+  font-weight: 800;
+
+  color: #ffffff;
+
+  background: linear-gradient(135deg, var(--green-dark), var(--green));
+
+  box-shadow:
+    0 13px 30px rgba(106, 173, 73, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.primaryAction:hover:not(:disabled) {
+  transform: translateY(-2px);
+
+  box-shadow:
+    0 17px 34px rgba(106, 173, 73, 0.31),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.primaryAction:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.primaryAction:disabled {
+  cursor: default;
+  opacity: 0.68;
+}
+
+/* ==========================================================================
+   APP PICKER - OUTER FRAME
+   ========================================================================== */
+
+.pickerFrame {
+  position: relative;
+  z-index: 3;
+
+  width: min(1340px, 94vw);
+}
+
+.pickerPanel {
+  position: relative;
+
+  width: 100%;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 30px;
+
+  background: linear-gradient(
+    100deg,
+    rgba(4, 17, 34, 0.94) 0%,
+    rgba(5, 24, 47, 0.92) 42%,
+    rgba(11, 50, 82, 0.8) 100%
+  );
+
+  box-shadow:
+    0 40px 100px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* ==========================================================================
+   PANEL GLOWS
+   ========================================================================== */
+
+.panelGlow {
+  position: absolute;
+
+  border-radius: 999px;
+
+  filter: blur(75px);
+
+  pointer-events: none;
+}
+
+.panelGlowLeft {
+  width: 400px;
+  height: 400px;
+
+  left: -150px;
+  bottom: -175px;
+
+  background: rgba(132, 197, 97, 0.29);
+}
+
+.panelGlowRight {
+  width: 420px;
+  height: 420px;
+
+  right: -160px;
+  top: -125px;
+
+  background: rgba(96, 192, 235, 0.3);
+}
+
+/* ==========================================================================
+   DECORATIVE DOT WAVES
+   ========================================================================== */
+
+.waveDots {
+  position: absolute;
+
+  width: 300px;
+  height: 210px;
+
+  opacity: 0.22;
+
+  pointer-events: none;
+
+  background-image: radial-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1.2px);
+
+  background-size: 10px 10px;
+
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+}
+
+.waveDotsLeft {
+  left: -55px;
+  bottom: 85px;
+
+  transform: rotate(-8deg);
+
+  mask-image: radial-gradient(ellipse at left bottom, #000 0%, transparent 72%);
+
+  -webkit-mask-image: radial-gradient(ellipse at left bottom, #000 0%, transparent 72%);
+}
+
+.waveDotsRight {
+  right: -55px;
+  bottom: 115px;
+
+  transform: rotate(8deg);
+
+  mask-image: radial-gradient(ellipse at right bottom, #000 0%, transparent 72%);
+
+  -webkit-mask-image: radial-gradient(ellipse at right bottom, #000 0%, transparent 72%);
+}
+
+/* ==========================================================================
+   HEADER
+   ========================================================================== */
+
+.pickerHeader {
+  position: relative;
+  z-index: 4;
+
+  min-height: 122px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 28px 54px 12px;
+}
+
+.pickerBrand {
+  display: flex;
+  align-items: center;
+
+  gap: 18px;
+}
+
+.brandDivider {
+  width: 1px;
+  height: 43px;
+
+  background: rgba(255, 255, 255, 0.23);
+}
+
+.yearsBlock {
+  display: flex;
+  align-items: flex-end;
+
+  gap: 6px;
+
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.yearsNumber {
+  font-size: 48px;
+  line-height: 0.88;
+
+  font-weight: 850;
+  letter-spacing: -2.2px;
+
+  color: rgba(255, 255, 255, 0.96);
+
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.1);
+}
+
+.yearsLabel {
+  margin-bottom: 4px;
+
+  font-size: 13px;
+  line-height: 1;
+
+  font-weight: 800;
+  letter-spacing: 0.4px;
+
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* ==========================================================================
+   USER / SIGN OUT
+   ========================================================================== */
+
+.pickerUser {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  font-size: 14px;
+
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.userName {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.userDot {
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.signOutLink {
+  padding: 0;
+
+  border: 0;
+
+  cursor: pointer;
+
+  font-size: 14px;
+  font-weight: 700;
+
+  color: var(--blue-soft);
+
+  background: transparent;
+
+  transition:
+    color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.signOutLink:hover {
+  color: #b9e0ff;
+}
+
+/* ==========================================================================
+   MAIN CONTENT
+   ========================================================================== */
+
+.pickerMain {
+  position: relative;
+  z-index: 4;
+
+  padding: 18px 54px 42px;
+}
+
+.mainTitle {
+  margin: 0 0 9px;
+
+  font-size: clamp(44px, 4vw, 58px);
+  line-height: 1;
+
+  font-weight: 820;
+  letter-spacing: -2.5px;
+
+  color: var(--text);
+}
+
+.mainSubtitle {
+  margin: 0 0 35px;
+
+  font-size: 16px;
+  line-height: 1.45;
+
+  color: var(--text-soft);
+}
+
+/* ==========================================================================
+   CARDS GRID
+   ========================================================================== */
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  width: 100%;
+}
+
+.cardsGrid.singleCard {
+  grid-template-columns: minmax(0, 620px);
+}
+
+/* ==========================================================================
+   APP CARD
+   ========================================================================== */
+
+.appCard {
+  position: relative;
+
+  min-height: 285px;
+
+  overflow: hidden;
+
+  padding: 23px 24px 22px;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 22px;
+
+  color: white;
+
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.055));
+
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+
+  transition:
+    transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 0.24s ease,
+    box-shadow 0.24s ease,
+    background 0.24s ease;
+}
+
+.appCard::before {
+  content: '';
+
+  position: absolute;
+  inset: 0;
+
+  opacity: 0;
+
+  pointer-events: none;
+
+  transition: opacity 0.25s ease;
+}
+
+.appCard.green::before {
+  background: radial-gradient(circle at 20% 45%, rgba(132, 197, 97, 0.17), transparent 43%);
+}
+
+.appCard.blue::before {
+  background: radial-gradient(circle at 20% 45%, rgba(55, 151, 255, 0.18), transparent 45%);
+}
+
+.appCard:hover {
+  transform: translateY(-6px);
+}
+
+.appCard:hover::before {
+  opacity: 1;
+}
+
+.appCard.green {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 0 1px rgba(132, 197, 97, 0.11);
+}
+
+.appCard.blue {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 0 0 1px rgba(43, 140, 255, 0.1);
+}
+
+.appCard.green:hover {
+  border-color: rgba(132, 197, 97, 0.45);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 24px 48px rgba(0, 0, 0, 0.19),
+    0 0 35px rgba(132, 197, 97, 0.08),
+    0 0 0 1px rgba(132, 197, 97, 0.17);
+}
+
+.appCard.blue:hover {
+  border-color: rgba(67, 159, 255, 0.46);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 24px 48px rgba(0, 0, 0, 0.19),
+    0 0 35px rgba(43, 140, 255, 0.09),
+    0 0 0 1px rgba(43, 140, 255, 0.18);
+}
+
+/* ==========================================================================
+   CARD HEADER
+   ========================================================================== */
+
+.cardTop {
+  position: relative;
+  z-index: 3;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cardTag {
+  font-size: 10px;
+  line-height: 1;
+
+  font-weight: 800;
+  letter-spacing: 1.7px;
+
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.arrowCircle {
+  width: 42px;
+  height: 42px;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+
+  color: rgba(255, 255, 255, 0.76);
+
+  background: rgba(255, 255, 255, 0.025);
+
+  transition:
+    transform 0.22s ease,
+    background 0.22s ease,
+    color 0.22s ease,
+    border-color 0.22s ease;
+}
+
+.arrowCircle.green {
+  border-color: rgba(132, 197, 97, 0.38);
+}
+
+.arrowCircle.blue {
+  border-color: rgba(43, 140, 255, 0.4);
+}
+
+.appCard:hover .arrowCircle {
+  transform: translateX(3px);
+}
+
+.appCard.green:hover .arrowCircle {
+  color: var(--green-soft);
+
+  border-color: rgba(132, 197, 97, 0.62);
+
+  background: rgba(132, 197, 97, 0.07);
+}
+
+.appCard.blue:hover .arrowCircle {
+  color: var(--blue-soft);
+
+  border-color: rgba(43, 140, 255, 0.65);
+
+  background: rgba(43, 140, 255, 0.07);
+}
+
+/* ==========================================================================
+   CARD VISUAL AREA
+   ========================================================================== */
+
+.cardVisualZone {
+  position: relative;
+  z-index: 2;
+
+  height: 105px;
+
+  margin: 16px 0 15px;
+}
+
+.visualWrap {
+  position: relative;
+
+  width: 100%;
+  height: 100%;
+}
+
+.visualGlow {
+  position: absolute;
+
+  left: 0;
+  top: -14px;
+
+  width: 145px;
+  height: 135px;
+
+  border-radius: 50%;
+
+  opacity: 0.5;
+
+  filter: blur(34px);
+
+  pointer-events: none;
+}
+
+.visualGlow.green {
+  background: rgba(132, 197, 97, 0.38);
+}
+
+.visualGlow.blue {
+  background: rgba(74, 151, 255, 0.4);
+}
+
+/* ==========================================================================
+   PACKAGE VISUAL
+   ========================================================================== */
+
+.packageTrail {
+  position: absolute;
+
+  left: 45px;
+  top: 45px;
+
+  width: 122px;
+  height: 27px;
+
+  border: 2px solid rgba(145, 217, 101, 0.49);
+  border-top-color: transparent;
+  border-left-color: transparent;
+  border-radius: 50%;
+
+  transform: rotate(-14deg);
+
+  box-shadow: 0 0 20px rgba(132, 197, 97, 0.16);
+}
+
+.packagePin {
+  position: absolute;
+
+  left: 144px;
+  top: -1px;
+
+  width: 30px;
+  height: 39px;
+
+  border-radius: 19px 19px 19px 0;
+
+  transform: rotate(45deg);
+
+  background: linear-gradient(180deg, var(--green-soft), var(--green));
+
+  box-shadow:
+    0 8px 22px rgba(132, 197, 97, 0.34),
+    0 0 20px rgba(132, 197, 97, 0.18);
+}
+
+.packagePin::after {
+  content: '';
+
+  position: absolute;
+
+  left: 8px;
+  top: 8px;
+
+  width: 14px;
+  height: 14px;
+
+  border-radius: 50%;
+
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.packageBox {
+  position: absolute;
+
+  left: 20px;
+  bottom: 1px;
+
+  width: 88px;
+  height: 67px;
+
+  transform: perspective(400px) rotateX(11deg);
+}
+
+.boxFront {
+  position: absolute;
+
+  left: 0;
+  bottom: 0;
+
+  width: 59px;
+  height: 46px;
+
+  border-radius: 4px;
+
+  background: linear-gradient(180deg, #eac896, #c79056);
+
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
+}
+
+.boxSide {
+  position: absolute;
+
+  left: 57px;
+  bottom: 0;
+
+  width: 30px;
+  height: 46px;
+
+  transform: skewY(-22deg);
+  transform-origin: left bottom;
+
+  border-radius: 2px 4px 4px 2px;
+
+  background: linear-gradient(180deg, #dcb077, #b47d46);
+}
+
+.boxTop {
+  position: absolute;
+
+  left: 7px;
+  bottom: 42px;
+
+  width: 63px;
+  height: 19px;
+
+  transform: skewX(-35deg);
+
+  border-radius: 4px;
+
+  background: linear-gradient(180deg, #f3d7ac, #d8ad72);
+}
+
+.boxTape {
+  position: absolute;
+
+  left: 26px;
+  bottom: 35px;
+
+  width: 13px;
+  height: 32px;
+
+  transform: skewX(-10deg);
+
+  border-radius: 3px;
+
+  background: linear-gradient(180deg, #a7df78, #70b448);
+
+  box-shadow: 0 0 10px rgba(132, 197, 97, 0.16);
+}
+
+/* ==========================================================================
+   ANALYTICS VISUAL
+   ========================================================================== */
+
+.analyticsBase {
+  position: absolute;
+
+  left: 12px;
+  bottom: 2px;
+
+  width: 135px;
+  height: 19px;
+
+  border-radius: 8px;
+
+  background: linear-gradient(180deg, rgba(107, 145, 255, 0.4), rgba(107, 145, 255, 0.14));
+
+  box-shadow: 0 13px 27px rgba(43, 140, 255, 0.18);
+}
+
+.analyticsBars {
+  position: absolute;
+
+  left: 27px;
+  bottom: 20px;
+
+  display: flex;
+  align-items: flex-end;
+
+  gap: 10px;
+}
+
+.analyticsBars span {
+  width: 19px;
+
+  border-radius: 6px 6px 2px 2px;
+
+  box-shadow: 0 9px 18px rgba(43, 140, 255, 0.13);
+}
+
+.analyticsBars span:nth-child(1) {
+  height: 30px;
+
+  background: linear-gradient(180deg, #8add9c, #52b56b);
+}
+
+.analyticsBars span:nth-child(2) {
+  height: 49px;
+
+  background: linear-gradient(180deg, #78cbff, #439aff);
+}
+
+.analyticsBars span:nth-child(3) {
+  height: 66px;
+
+  background: linear-gradient(180deg, #979aff, #6169ff);
+}
+
+.analyticsBars span:nth-child(4) {
+  height: 82px;
+
+  background: linear-gradient(180deg, #be8aff, #7e59ff);
+}
+
+.analyticsRing {
+  position: absolute;
+
+  left: 103px;
+  top: 2px;
+
+  width: 61px;
+  height: 61px;
+
+  border: 10px solid rgba(187, 133, 255, 0.85);
+  border-left-color: rgba(76, 152, 255, 0.22);
+  border-radius: 50%;
+
+  transform: rotate(-25deg);
+
+  box-shadow: 0 9px 25px rgba(127, 89, 255, 0.15);
+}
+
+.analyticsLine {
+  position: absolute;
+
+  left: 18px;
+  top: 12px;
+
+  width: 130px;
+  height: 62px;
+}
+
+.analyticsLine::before {
+  content: '';
+
+  position: absolute;
+
+  left: 7px;
+  top: 40px;
+
+  width: 107px;
+  height: 2px;
+
+  transform: rotate(-17deg);
+  transform-origin: left center;
+
+  background: linear-gradient(90deg, rgba(120, 190, 255, 0.1), rgba(120, 190, 255, 0.85));
+}
+
+.analyticsLine i {
+  position: absolute;
+
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+
+  background: #93d8ff;
+
+  box-shadow: 0 0 13px rgba(143, 214, 255, 0.92);
+}
+
+.analyticsLine i:nth-child(1) {
+  left: 10px;
+  top: 42px;
+}
+
+.analyticsLine i:nth-child(2) {
+  left: 61px;
+  top: 21px;
+}
+
+.analyticsLine i:nth-child(3) {
+  left: 113px;
+  top: 5px;
+}
+
+/* ==========================================================================
+   CARD COPY
+   ========================================================================== */
+
+.cardCopy {
+  position: relative;
+  z-index: 3;
+}
+
+.cardTitle {
+  margin-bottom: 8px;
+
+  font-size: 22px;
+  line-height: 1.15;
+
+  font-weight: 800;
+  letter-spacing: -0.35px;
+
+  color: rgba(255, 255, 255, 0.97);
+}
+
+.cardDesc {
+  max-width: 430px;
+
+  font-size: 14px;
+  line-height: 1.55;
+
+  color: rgba(255, 255, 255, 0.69);
+}
+
+/* ==========================================================================
+   CARD BOTTOM ACCENT
+   ========================================================================== */
+
+.cardBottomAccent {
+  position: absolute;
+
+  left: 0;
+  bottom: 0;
+
+  width: 205px;
+  height: 4px;
+
+  border-radius: 0 8px 8px 0;
+}
+
+.appCard.green .cardBottomAccent {
+  background: linear-gradient(90deg, rgba(132, 197, 97, 1), rgba(132, 197, 97, 0));
+}
+
+.appCard.blue .cardBottomAccent {
+  background: linear-gradient(90deg, rgba(43, 140, 255, 1), rgba(43, 140, 255, 0));
+}
+
+/* ==========================================================================
+   TRUST / BENEFITS ROW
+   ========================================================================== */
+
+.trustRow {
+  position: relative;
+  z-index: 4;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 30px;
+
+  margin-top: 32px;
+  padding-top: 12px;
+}
+
+.trustItem {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+}
+
+.trustIcon {
+  display: grid;
+  place-items: center;
+
+  color: rgba(255, 255, 255, 0.61);
+}
+
+.trustText strong,
+.trustText span {
+  display: block;
+}
+
+.trustText strong {
+  margin-bottom: 3px;
+
+  font-size: 12px;
+  line-height: 1.15;
+
+  font-weight: 700;
+
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.trustText span {
+  font-size: 11px;
+  line-height: 1.2;
+
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.trustDivider {
+  width: 1px;
+  height: 34px;
+
+  background: rgba(255, 255, 255, 0.11);
+}
+
+/* ==========================================================================
+   RESPONSIVE - 1100
+   ========================================================================== */
+
+@media (max-width: 1100px) {
+  .pickerFrame {
+    width: min(980px, 94vw);
   }
 
-  .content {
-    display: flex;
+  .pickerHeader {
+    padding-left: 38px;
+    padding-right: 38px;
+  }
+
+  .pickerMain {
+    padding-left: 38px;
+    padding-right: 38px;
+  }
+
+  .mainTitle {
+    font-size: 48px;
+  }
+
+  .appCard {
+    min-height: 275px;
+  }
+}
+
+/* ==========================================================================
+   RESPONSIVE - TABLET
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .screenBg {
+    padding: 22px;
+  }
+
+  .pickerHeader {
+    min-height: 110px;
+
+    padding: 24px 28px 10px;
+  }
+
+  .pickerMain {
+    padding: 18px 28px 32px;
+  }
+
+  .mainTitle {
+    font-size: 44px;
+  }
+
+  .mainSubtitle {
+    margin-bottom: 28px;
+  }
+
+  .cardDesc {
+    font-size: 13px;
+  }
+
+  .trustRow {
+    gap: 20px;
+  }
+
+  .trustDivider {
+    height: 30px;
+  }
+}
+
+/* ==========================================================================
+   RESPONSIVE - MOBILE GRID
+   ========================================================================== */
+
+@media (max-width: 720px) {
+  .screenBg {
+    overflow: auto;
+
+    padding: 16px;
+  }
+
+  .pickerFrame {
+    width: 100%;
+  }
+
+  .pickerPanel {
+    border-radius: 22px;
+  }
+
+  .pickerHeader {
+    min-height: auto;
+
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    flex-grow: 1;
+    align-items: flex-start;
 
-    h1 {
-      text-align: center;
-    }
+    gap: 20px;
+
+    padding: 25px 22px 15px;
   }
 
-  .links {
-    display: flex;
-    align-items: center;
+  .pickerBrand {
     gap: 12px;
-
-    a {
-      text-decoration: none;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-    }
-
-    .admin {
-      color: rgb(0, 0, 0);
-      background: rgb(1000, 1000, 1000);
-      border: 1px solid rgb(0, 0, 0);
-    }
-
-    .docs {
-      color: rgb(1000, 1000, 1000);
-      background: rgb(0, 0, 0);
-      border: 1px solid rgb(1000, 1000, 1000);
-    }
   }
 
-  .footer {
-    display: flex;
-    align-items: center;
+  .brandLogoLight {
+    height: 31px;
+  }
+
+  .brandDivider {
+    height: 35px;
+  }
+
+  .yearsNumber {
+    font-size: 36px;
+    letter-spacing: -1.5px;
+  }
+
+  .yearsLabel {
+    margin-bottom: 3px;
+
+    font-size: 10px;
+  }
+
+  .pickerUser {
+    align-self: flex-end;
+
+    font-size: 12px;
+  }
+
+  .signOutLink {
+    font-size: 12px;
+  }
+
+  .pickerMain {
+    padding: 15px 22px 28px;
+  }
+
+  .mainTitle {
+    font-size: 37px;
+    letter-spacing: -1.5px;
+  }
+
+  .mainSubtitle {
+    margin-bottom: 24px;
+
+    font-size: 14px;
+  }
+
+  .cardsGrid {
+    grid-template-columns: 1fr !important;
+
+    gap: 15px;
+  }
+
+  .appCard {
+    min-height: 270px;
+
+    padding: 20px;
+  }
+
+  .cardVisualZone {
+    height: 100px;
+  }
+
+  .cardTitle {
+    font-size: 20px;
+  }
+
+  .cardDesc {
+    font-size: 13px;
+  }
+
+  .trustRow {
+    align-items: flex-start;
+
+    flex-direction: column;
+
+    gap: 15px;
+
+    margin-top: 25px;
+  }
+
+  .trustDivider {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   RESPONSIVE - SMALL MOBILE
+   ========================================================================== */
+
+@media (max-width: 480px) {
+  .screenBg {
+    padding: 10px;
+  }
+
+  .loginGlass {
+    padding: 28px 22px;
+  }
+
+  .pickerHeader {
+    padding: 22px 18px 14px;
+  }
+
+  .pickerMain {
+    padding: 12px 18px 24px;
+  }
+
+  .pickerBrand {
+    flex-wrap: wrap;
+  }
+
+  .brandLogoLight {
+    height: 28px;
+  }
+
+  .yearsBlock {
+    gap: 5px;
+  }
+
+  .yearsNumber {
+    font-size: 32px;
+  }
+
+  .mainTitle {
+    font-size: 32px;
+  }
+
+  .mainSubtitle {
+    font-size: 13px;
+  }
+
+  .appCard {
+    min-height: 265px;
+
+    border-radius: 18px;
+  }
+
+  .arrowCircle {
+    width: 38px;
+    height: 38px;
+  }
+
+  .cardTag {
+    font-size: 9px;
+  }
+
+  .packagePin {
+    left: 135px;
+  }
+
+  .analyticsRing {
+    left: 98px;
+  }
+}
+
+/* ==========================================================================
+   APP PICKER V2 FIXES
+   ========================================================================== */
+
+
+/* --------------------------------------------------------------------------
+   PANEL SIZE
+   -------------------------------------------------------------------------- */
+
+.pickerFrame {
+  position: relative;
+  z-index: 3;
+
+  width: min(1320px, 94vw);
+}
+
+.pickerPanel {
+  position: relative;
+
+  width: 100%;
+  min-height: auto;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 30px;
+
+  background:
+    linear-gradient(
+      105deg,
+      rgba(3, 15, 31, 0.96) 0%,
+      rgba(5, 25, 48, 0.94) 48%,
+      rgba(20, 75, 108, 0.82) 100%
+    );
+
+  box-shadow:
+    0 36px 90px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+}
+
+
+/* --------------------------------------------------------------------------
+   HEADER
+   -------------------------------------------------------------------------- */
+
+.pickerHeader {
+  position: relative;
+  z-index: 5;
+
+  min-height: 104px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 30px 52px 18px;
+}
+
+.pickerBrand {
+  display: flex;
+  align-items: center;
+}
+
+.brandLogoLight {
+  width: auto;
+  height: 42px;
+}
+
+
+/* --------------------------------------------------------------------------
+   HEADER ACTIONS
+   -------------------------------------------------------------------------- */
+
+.pickerActions {
+  display: flex;
+  align-items: center;
+
+  gap: 14px;
+}
+
+
+/* --------------------------------------------------------------------------
+   THEME BUTTON
+   -------------------------------------------------------------------------- */
+
+.themeToggle {
+  width: 42px;
+  height: 42px;
+
+  display: grid;
+  place-items: center;
+
+  flex: 0 0 42px;
+
+  padding: 0;
+
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+
+  cursor: pointer;
+
+  color: rgba(255, 255, 255, 0.72);
+
+  background:
+    rgba(255, 255, 255, 0.045);
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.themeToggle:hover {
+  color: white;
+
+  border-color:
+    rgba(255, 255, 255, 0.24);
+
+  background:
+    rgba(255, 255, 255, 0.08);
+
+  transform: translateY(-1px);
+}
+
+.themeToggleIcon {
+  display: grid;
+  place-items: center;
+}
+
+
+/* --------------------------------------------------------------------------
+   USER
+   -------------------------------------------------------------------------- */
+
+.pickerUser {
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  padding-left: 3px;
+}
+
+.pickerAvatar {
+  width: 39px;
+  height: 39px;
+
+  display: grid;
+  place-items: center;
+
+  flex: 0 0 39px;
+
+  border: 1px solid rgba(132, 197, 97, 0.25);
+  border-radius: 12px;
+
+  font-size: 13px;
+  font-weight: 800;
+
+  color: #b9ef8d;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(132, 197, 97, 0.18),
+      rgba(132, 197, 97, 0.07)
+    );
+}
+
+.pickerUserCopy {
+  display: flex;
+  flex-direction: column;
+
+  min-width: 82px;
+}
+
+.userName {
+  display: block;
+
+  font-size: 12px;
+  line-height: 1.25;
+
+  font-weight: 700;
+
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.userStatus {
+  display: block;
+
+  margin-top: 2px;
+
+  font-size: 10px;
+  line-height: 1.2;
+
+  color: rgba(255, 255, 255, 0.39);
+}
+
+.pickerLogout {
+  width: 42px;
+  height: 42px;
+
+  display: grid;
+  place-items: center;
+
+  flex: 0 0 42px;
+
+  padding: 0;
+  margin-left: 2px;
+
+  cursor: pointer;
+
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+
+  color: rgba(255, 255, 255, 0.58);
+
+  background:
+    rgba(255, 255, 255, 0.04);
+
+  transition:
+    color 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.pickerLogout:hover {
+  color: #ffffff;
+
+  border-color:
+    rgba(255, 255, 255, 0.22);
+
+  background:
+    rgba(255, 255, 255, 0.08);
+}
+
+
+/* --------------------------------------------------------------------------
+   MAIN
+   -------------------------------------------------------------------------- */
+
+.pickerMain {
+  position: relative;
+  z-index: 4;
+
+  max-width: 1150px;
+
+  margin: 0 auto;
+
+  padding: 42px 46px 38px;
+}
+
+.pickerHeading {
+  margin-bottom: 32px;
+}
+
+.pickerEyebrow {
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+
+  margin-bottom: 14px;
+
+  font-size: 10px;
+  line-height: 1;
+
+  font-weight: 800;
+  letter-spacing: 1.9px;
+
+  color: rgba(255, 255, 255, 0.43);
+}
+
+.pickerEyebrowDot {
+  width: 7px;
+  height: 7px;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  background: #84c561;
+
+  box-shadow:
+    0 0 0 5px rgba(132, 197, 97, 0.08),
+    0 0 16px rgba(132, 197, 97, 0.6);
+}
+
+.mainTitle {
+  margin: 0;
+
+  font-size: 44px;
+  line-height: 1.03;
+
+  font-weight: 800;
+  letter-spacing: -1.8px;
+
+  color: #ffffff;
+}
+
+.mainTitle span {
+  color: #84c561;
+}
+
+.mainSubtitle {
+  margin: 10px 0 0;
+
+  font-size: 14px;
+  line-height: 1.5;
+
+  color: rgba(211, 225, 236, 0.58);
+}
+
+
+/* --------------------------------------------------------------------------
+   GRID
+   -------------------------------------------------------------------------- */
+
+.cardsGrid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 18px;
+
+  width: 100%;
+}
+
+.cardsGrid.singleCard {
+  grid-template-columns:
+    minmax(0, 560px);
+}
+
+
+/* --------------------------------------------------------------------------
+   CARD
+   -------------------------------------------------------------------------- */
+
+.appCard {
+  position: relative;
+
+  height: 310px;
+  min-height: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+
+  padding: 22px;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 22px;
+
+  color: #ffffff;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.085),
+      rgba(255, 255, 255, 0.035)
+    );
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+
+  transition:
+    transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+    background 0.24s ease,
+    border-color 0.24s ease,
+    box-shadow 0.24s ease;
+}
+
+.appCard::before {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  opacity: 0;
+
+  pointer-events: none;
+
+  transition:
+    opacity 0.25s ease;
+}
+
+.appCard.green::before {
+  background:
+    radial-gradient(
+      circle at 18% 42%,
+      rgba(132, 197, 97, 0.15),
+      transparent 43%
+    );
+}
+
+.appCard.blue::before {
+  background:
+    radial-gradient(
+      circle at 18% 42%,
+      rgba(43, 140, 255, 0.16),
+      transparent 44%
+    );
+}
+
+.appCard:hover {
+  transform: translateY(-6px);
+}
+
+.appCard:hover::before {
+  opacity: 1;
+}
+
+.appCard.green:hover {
+  border-color:
+    rgba(132, 197, 97, 0.42);
+
+  box-shadow:
+    0 22px 45px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.appCard.blue:hover {
+  border-color:
+    rgba(43, 140, 255, 0.44);
+
+  box-shadow:
+    0 22px 45px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+
+/* --------------------------------------------------------------------------
+   CARD GLOW
+   -------------------------------------------------------------------------- */
+
+.cardGlow {
+  position: absolute;
+
+  width: 190px;
+  height: 190px;
+
+  right: -65px;
+  top: -70px;
+
+  border-radius: 50%;
+
+  filter: blur(50px);
+
+  pointer-events: none;
+
+  opacity: 0.11;
+}
+
+.appCard.green .cardGlow {
+  background: #84c561;
+}
+
+.appCard.blue .cardGlow {
+  background: #2b8cff;
+}
+
+
+/* --------------------------------------------------------------------------
+   CARD HEADER
+   -------------------------------------------------------------------------- */
+
+.cardTop {
+  position: relative;
+  z-index: 3;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cardTag {
+  font-size: 9px;
+  line-height: 1;
+
+  font-weight: 800;
+  letter-spacing: 1.6px;
+
+  color: rgba(214, 229, 240, 0.44);
+}
+
+.arrowCircle {
+  width: 40px;
+  height: 40px;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  color: rgba(255, 255, 255, 0.64);
+
+  background:
+    rgba(255, 255, 255, 0.025);
+
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    background 0.18s ease;
+}
+
+.arrowCircle.green {
+  border:
+    1px solid rgba(132, 197, 97, 0.33);
+}
+
+.arrowCircle.blue {
+  border:
+    1px solid rgba(43, 140, 255, 0.35);
+}
+
+.appCard:hover .arrowCircle {
+  transform: translateX(3px);
+}
+
+.appCard.green:hover .arrowCircle {
+  color: #b9ef8d;
+
+  background:
+    rgba(132, 197, 97, 0.06);
+
+  border-color:
+    rgba(132, 197, 97, 0.58);
+}
+
+.appCard.blue:hover .arrowCircle {
+  color: #7dc4ff;
+
+  background:
+    rgba(43, 140, 255, 0.06);
+
+  border-color:
+    rgba(43, 140, 255, 0.58);
+}
+
+
+/* --------------------------------------------------------------------------
+   VISUAL
+   -------------------------------------------------------------------------- */
+
+.cardVisualZone {
+  position: relative;
+  z-index: 2;
+
+  height: 100px;
+
+  flex-shrink: 0;
+
+  margin: 14px 0 13px;
+}
+
+
+/* --------------------------------------------------------------------------
+   COPY
+   -------------------------------------------------------------------------- */
+
+.cardCopy {
+  position: relative;
+  z-index: 3;
+}
+
+.cardTitle {
+  margin: 0 0 7px;
+
+  font-size: 21px;
+  line-height: 1.15;
+
+  font-weight: 780;
+  letter-spacing: -0.35px;
+
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.cardDesc {
+  max-width: 370px;
+
+  font-size: 13px;
+  line-height: 1.5;
+
+  color: rgba(200, 217, 230, 0.55);
+}
+
+
+/* --------------------------------------------------------------------------
+   OPEN APPLICATION
+   -------------------------------------------------------------------------- */
+
+.cardOpen {
+  position: relative;
+  z-index: 3;
+
+  display: flex;
+  align-items: center;
+
+  gap: 7px;
+
+  margin-top: auto;
+
+  font-size: 11px;
+  line-height: 1;
+
+  font-weight: 650;
+
+  color: rgba(210, 225, 237, 0.43);
+
+  transition:
+    color 0.18s ease;
+}
+
+.cardOpen svg {
+  width: 14px;
+  height: 14px;
+}
+
+.appCard.green:hover .cardOpen {
+  color: #b9ef8d;
+}
+
+.appCard.blue:hover .cardOpen {
+  color: #7dc4ff;
+}
+
+
+/* --------------------------------------------------------------------------
+   BOTTOM LINE
+   -------------------------------------------------------------------------- */
+
+.cardBottomAccent {
+  position: absolute;
+
+  left: 0;
+  bottom: 0;
+
+  width: 180px;
+  height: 3px;
+}
+
+.appCard.green .cardBottomAccent {
+  background:
+    linear-gradient(
+      90deg,
+      #84c561,
+      rgba(132, 197, 97, 0)
+    );
+}
+
+.appCard.blue .cardBottomAccent {
+  background:
+    linear-gradient(
+      90deg,
+      #2b8cff,
+      rgba(43, 140, 255, 0)
+    );
+}
+
+
+/* --------------------------------------------------------------------------
+   TRUST ROW
+   -------------------------------------------------------------------------- */
+
+.trustRow {
+  position: relative;
+  z-index: 4;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  gap: 28px;
+
+  margin-top: 32px;
+}
+
+.trustItem {
+  display: flex;
+  align-items: center;
+
+  gap: 11px;
+}
+
+.trustIcon {
+  display: grid;
+  place-items: center;
+
+  color: rgba(197, 215, 230, 0.50);
+}
+
+.trustText {
+  display: flex;
+  flex-direction: column;
+}
+
+.trustText strong {
+  margin: 0 0 2px;
+
+  font-size: 11px;
+  line-height: 1.2;
+
+  font-weight: 700;
+
+  color: rgba(225, 236, 244, 0.70);
+}
+
+.trustText span {
+  font-size: 10px;
+  line-height: 1.2;
+
+  color: rgba(188, 207, 222, 0.37);
+}
+
+.trustDivider {
+  width: 1px;
+  height: 31px;
+
+  background:
+    rgba(255, 255, 255, 0.085);
+}
+
+
+/* --------------------------------------------------------------------------
+   FOOTER
+   -------------------------------------------------------------------------- */
+
+.pickerFooter {
+  position: relative;
+  z-index: 4;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 18px 52px;
+
+  border-top:
+    1px solid rgba(255, 255, 255, 0.055);
+
+  font-size: 9px;
+  line-height: 1;
+
+  color: rgba(197, 215, 228, 0.24);
+}
+
+
+/* ==========================================================================
+   LIGHT MODE
+   ========================================================================== */
+
+[data-theme="light"].screenBg {
+  background:
+    radial-gradient(
+      circle at 8% 90%,
+      rgba(132, 197, 97, 0.15),
+      transparent 27%
+    ),
+    radial-gradient(
+      circle at 95% 5%,
+      rgba(81, 178, 233, 0.17),
+      transparent 28%
+    ),
+    linear-gradient(
+      135deg,
+      #eef4f7 0%,
+      #f7fafb 48%,
+      #eef6f9 100%
+    );
+}
+
+[data-theme="light"] .pickerPanel {
+  border-color:
+    rgba(31, 65, 88, 0.11);
+
+  background:
+    linear-gradient(
+      110deg,
+      rgba(255, 255, 255, 0.94),
+      rgba(246, 250, 252, 0.95)
+    );
+
+  box-shadow:
+    0 34px 80px rgba(29, 65, 90, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="light"] .panelGlowLeft {
+  background:
+    rgba(132, 197, 97, 0.18);
+}
+
+[data-theme="light"] .panelGlowRight {
+  background:
+    rgba(67, 161, 216, 0.16);
+}
+
+[data-theme="light"] .waveDots {
+  opacity: 0.09;
+
+  background-image:
+    radial-gradient(
+      rgba(30, 70, 95, 0.65) 1px,
+      transparent 1px
+    );
+}
+
+[data-theme="light"] .brandLogoLight {
+  filter: none;
+}
+
+[data-theme="light"] .themeToggle {
+  color: #536a79;
+
+  border-color:
+    rgba(30, 65, 90, 0.12);
+
+  background:
+    rgba(255, 255, 255, 0.68);
+}
+
+[data-theme="light"] .themeToggle:hover {
+  color: #173c56;
+
+  border-color:
+    rgba(30, 65, 90, 0.20);
+
+  background:
+    #ffffff;
+}
+
+[data-theme="light"] .pickerAvatar {
+  color: #5f9f3d;
+
+  border-color:
+    rgba(132, 197, 97, 0.28);
+
+  background:
+    rgba(132, 197, 97, 0.11);
+}
+
+[data-theme="light"] .userName {
+  color: #223b4e;
+}
+
+[data-theme="light"] .userStatus {
+  color: #8a9aa6;
+}
+
+[data-theme="light"] .pickerLogout {
+  color: #6a7e8d;
+
+  border-color:
+    rgba(31, 65, 88, 0.11);
+
+  background:
+    rgba(255, 255, 255, 0.60);
+}
+
+[data-theme="light"] .pickerLogout:hover {
+  color: #173c56;
+
+  background:
+    #ffffff;
+
+  border-color:
+    rgba(31, 65, 88, 0.19);
+}
+
+[data-theme="light"] .pickerEyebrow {
+  color: #8b9ba7;
+}
+
+[data-theme="light"] .mainTitle {
+  color: #17364b;
+}
+
+[data-theme="light"] .mainTitle span {
+  color: #70ae4d;
+}
+
+[data-theme="light"] .mainSubtitle {
+  color: #788b99;
+}
+
+[data-theme="light"] .appCard {
+  border-color:
+    rgba(33, 68, 91, 0.11);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.90),
+      rgba(247, 250, 252, 0.80)
+    );
+
+  box-shadow:
+    0 5px 18px rgba(27, 58, 78, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="light"] .appCard.green:hover {
+  border-color:
+    rgba(132, 197, 97, 0.43);
+
+  box-shadow:
+    0 20px 42px rgba(62, 104, 130, 0.10);
+}
+
+[data-theme="light"] .appCard.blue:hover {
+  border-color:
+    rgba(43, 140, 255, 0.36);
+
+  box-shadow:
+    0 20px 42px rgba(62, 104, 130, 0.10);
+}
+
+[data-theme="light"] .cardTag {
+  color: #97a5ae;
+}
+
+[data-theme="light"] .arrowCircle {
+  color: #718796;
+
+  background:
+    rgba(255, 255, 255, 0.55);
+}
+
+[data-theme="light"] .cardTitle {
+  color: #1c374a;
+}
+
+[data-theme="light"] .cardDesc {
+  color: #768a98;
+}
+
+[data-theme="light"] .cardOpen {
+  color: #8b9ca7;
+}
+
+[data-theme="light"] .trustIcon {
+  color: #8498a6;
+}
+
+[data-theme="light"] .trustText strong {
+  color: #4a6475;
+}
+
+[data-theme="light"] .trustText span {
+  color: #91a1ac;
+}
+
+[data-theme="light"] .trustDivider {
+  background:
+    rgba(34, 68, 91, 0.10);
+}
+
+[data-theme="light"] .pickerFooter {
+  border-top-color:
+    rgba(34, 68, 91, 0.07);
+
+  color: #a1adb5;
+}
+
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+@media (max-width: 960px) {
+  .pickerFrame {
+    width: min(760px, 95vw);
+  }
+
+  .cardsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .cardsGrid.singleCard {
+    grid-template-columns: 1fr;
+  }
+
+  .pickerMain {
+    padding:
+      34px
+      32px
+      34px;
+  }
+
+  .appCard {
+    height: 300px;
+  }
+
+  .trustRow {
+    flex-wrap: wrap;
+  }
+}
+
+
+@media (max-width: 680px) {
+  .pickerHeader {
+    align-items: flex-start;
+
+    padding:
+      24px
+      22px
+      14px;
+  }
+
+  .brandLogoLight {
+    height: 32px;
+  }
+
+  .pickerActions {
     gap: 8px;
+  }
 
-    @media (max-width: 1024px) {
-      flex-direction: column;
-      gap: 6px;
-    }
+  .pickerUserCopy {
+    display: none;
+  }
 
-    p {
-      margin: 0;
-    }
+  .pickerMain {
+    padding:
+      30px
+      22px
+      28px;
+  }
 
-    .codeLink {
-      text-decoration: none;
-      padding: 0 0.5rem;
-      background: rgb(60, 60, 60);
-      border-radius: 4px;
-    }
+  .mainTitle {
+    font-size: 36px;
+  }
+
+  .appCard {
+    height: 285px;
+  }
+
+  .trustRow {
+    align-items: flex-start;
+    justify-content: flex-start;
+
+    flex-direction: column;
+
+    gap: 14px;
+  }
+
+  .trustDivider {
+    display: none;
+  }
+
+  .pickerFooter {
+    padding:
+      17px
+      22px;
   }
 }
