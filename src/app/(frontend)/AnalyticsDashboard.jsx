@@ -19,17 +19,17 @@ import {
 const C = {
   green: '#84c561',
   greenDark: '#6aad49',
-  blue: '#075c8f',
-  blueLight: '#e6f0f7',
-  dark: '#404041',
-  bg: '#f2f2f2',
-  white: '#ffffff',
-  border: '#e5e7eb',
-  mid: '#6b7280',
-  red: '#dc2626',
-  amber: '#d97706',
-  purple: '#7c3aed',
-  greenTxt: '#16a34a',
+  blue: '#22a8ff',
+  blueLight: 'var(--an-blue-soft)',
+  dark: 'var(--an-text)',
+  bg: 'var(--an-bg)',
+  white: 'var(--an-panel)',
+  border: 'var(--an-border)',
+  mid: 'var(--an-muted)',
+  red: '#ff4d67',
+  amber: '#f2a93b',
+  purple: '#9b5cff',
+  greenTxt: '#37ce63',
 }
 const API = '/api'
 const SOURCE_LABEL = {
@@ -73,10 +73,21 @@ function familyOfName(name) {
 
 const dayMs = 86400000
 
-const TABS = ['Overview', 'Campaigns', 'Templates', 'Channels', 'Timing', 'Deliverability']
+const TABS = ['Overview', 'Executive', 'Campaigns', 'Templates', 'Audience', 'Channels', 'Timing', 'Journeys', 'Deliverability', 'Data Quality', 'Alerts']
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-export default function AnalyticsDashboard({ user, onBack, onLogout }) {
+const ALERT_RULES_KEY = 'em-analytics-alert-rules-v1'
+const DEFAULT_ALERT_RULES = {
+  deliveryMin: 96,
+  openDropMax: 3,
+  ctrDropMax: 1.5,
+  complaintMax: 0.1,
+  bounceMax: 5,
+  unsubscribeMax: 1,
+  dataQualityMin: 90,
+}
+
+export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'dark', onToggleTheme }) {
   const [rows, setRows] = useState(null)
   const [campaigns, setCampaigns] = useState([])
   const [tplMap, setTplMap] = useState({})
@@ -96,6 +107,8 @@ export default function AnalyticsDashboard({ user, onBack, onLogout }) {
 
   useEffect(() => onPopState(() => setTabState(readParam('tab', TABS) || 'Overview')), [])
   const [events, setEvents] = useState(null) // lazily loaded, Timing tab only
+  const [journeys, setJourneys] = useState(null) // lazily loaded, Journeys tab only
+  const [journeyErr, setJourneyErr] = useState('')
 
   useEffect(() => {
     ;(async () => {
@@ -152,6 +165,25 @@ export default function AnalyticsDashboard({ user, onBack, onLogout }) {
   // A range change invalidates the cached events window.
   useEffect(() => setEvents(null), [days])
 
+  // Journey analytics comes from the existing JourneyTracking collection. Load it only
+  // when needed so the general analytics dashboard stays lightweight.
+  useEffect(() => {
+    if (tab !== 'Journeys' || journeys !== null) return
+    setJourneyErr('')
+    fetch(`${API}/journey-tracking?limit=10000&depth=0&sort=-journeyStartedAt`, {
+      credentials: 'include',
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error('Journey request failed')
+        return r.json()
+      })
+      .then((d) => setJourneys(d?.docs || []))
+      .catch(() => {
+        setJourneyErr('Could not load journey tracking data.')
+        setJourneys([])
+      })
+  }, [tab, journeys])
+
   const campaignKeys = useMemo(() => {
     const c = campaigns.find((x) => x.name === campaign)
     return c ? new Set(c.keys) : null
@@ -159,31 +191,48 @@ export default function AnalyticsDashboard({ user, onBack, onLogout }) {
 
   const weekly = days > 92 // group charts by week for long ranges
 
-  const { current, previous } = useMemo(() => {
-    if (!rows) return { current: [], previous: [] }
+  const { current, previous, scopeCurrent, scopePrevious } = useMemo(() => {
+    if (!rows) return { current: [], previous: [], scopeCurrent: [], scopePrevious: [] }
     const now = Date.now()
     const curStart = now - days * dayMs
     const prevStart = now - 2 * days * dayMs
-    const pass = (r) =>
+    const scopePass = (r) =>
       (channel === 'All' || r.channel === channel) &&
-      (region === 'All' || r.region === region) &&
-      (!campaignKeys || campaignKeys.has(r.templateKey))
-    const cur = [],
-      prev = []
+      (region === 'All' || r.region === region)
+    const campaignPass = (r) => !campaignKeys || campaignKeys.has(r.templateKey)
+    const cur = [], prev = [], scopeCur = [], scopePrev = []
     for (const r of rows) {
-      if (!pass(r)) continue
+      if (!scopePass(r)) continue
       const t = new Date(r.date).getTime()
-      if (t >= curStart) cur.push(r)
-      else if (t >= prevStart) prev.push(r)
+      if (t >= curStart) {
+        scopeCur.push(r)
+        if (campaignPass(r)) cur.push(r)
+      } else if (t >= prevStart) {
+        scopePrev.push(r)
+        if (campaignPass(r)) prev.push(r)
+      }
     }
-    return { current: cur, previous: prev }
+    return { current: cur, previous: prev, scopeCurrent: scopeCur, scopePrevious: scopePrev }
   }, [rows, days, channel, region, campaignKeys])
+
+  const filteredEvents = useMemo(() => {
+    if (events === null) return null
+    return events.filter((e) =>
+      (channel === 'All' || e.channel === channel) &&
+      (region === 'All' || e.region === region) &&
+      (!campaignKeys || campaignKeys.has(e.templateKey)),
+    )
+  }, [events, channel, region, campaignKeys])
 
   const agg = useMemo(() => sumRows(current), [current])
   const aggPrev = useMemo(() => sumRows(previous), [previous])
   const regions = useMemo(
     () => [...new Set((rows || []).map((r) => r.region))].filter(Boolean).sort(),
     [rows],
+  )
+  const timeZone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time',
+    [],
   )
 
   if (rows === null)
@@ -197,248 +246,296 @@ export default function AnalyticsDashboard({ user, onBack, onLogout }) {
   const bounceRate = pctNum(agg.hardBounces + agg.softBounces, agg.sent)
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, fontFamily: 'system-ui', color: C.dark }}>
+    <div className="analyticsShell" data-theme={theme}>
       <style>{PRINT_CSS}</style>
-      <div
-        className="no-print"
-        style={{
-          background: C.dark,
-          padding: '14px 22px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+
+      <header className="analyticsTopbar no-print">
+        <div className="analyticsBrandGroup">
           <img
             src={`data:image/svg+xml;base64,${LOGO_B64}`}
             alt="easyMarkets"
-            style={{ height: 26 }}
+            className="analyticsLogo"
           />
-          <div style={{ color: '#fff', fontSize: 15, fontWeight: 700 }}>Marketing Analytics</div>
-          <span
-            style={{
-              fontSize: 11,
-              color: '#9ca3af',
-              background: 'rgba(255,255,255,.08)',
-              padding: '2px 8px',
-              borderRadius: 6,
-            }}
-          >
-            Global · all campaigns
-          </span>
+          <span className="analyticsBrandDivider" />
+          <div className="analyticsProductName">Marketing Analytics</div>
+          <span className="analyticsScopeBadge">Global · all campaigns</span>
         </div>
-        <div
-          style={{ fontSize: 12, color: '#c2c5cc', display: 'flex', gap: 12, alignItems: 'center' }}
-        >
+
+        <div className="analyticsTopActions">
           {onBack && (
-            <button onClick={onBack} style={hdrBtn}>
-              ← Apps
+            <button type="button" onClick={onBack} className="analyticsHeaderButton">
+              <GridIcon />
+              <span>Apps</span>
             </button>
           )}
-          <span>{user.name}</span>
-          <button onClick={onLogout} style={hdrBtn}>
-            Sign out
+
+          {onToggleTheme && (
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className="analyticsIconButton"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+            </button>
+          )}
+
+          <div className="analyticsUser">
+            <span className="analyticsUserName">{user.name || user.username}</span>
+            <span className="analyticsAvatar">
+              {(user.name || user.username || 'U').charAt(0).toUpperCase()}
+            </span>
+          </div>
+
+          <button type="button" onClick={onLogout} className="analyticsHeaderButton analyticsSignout">
+            <LogoutIcon />
+            <span>Sign out</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      <div
-        className="no-print"
-        style={{
-          background: C.white,
-          borderBottom: `1px solid ${C.border}`,
-          padding: '0 22px',
-          display: 'flex',
-          gap: 4,
-          overflowX: 'auto',
-        }}
-      >
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: '14px 16px',
-              fontSize: 13,
-              fontWeight: tab === t ? 700 : 500,
-              color: tab === t ? C.blue : C.mid,
-              cursor: 'pointer',
-              borderBottom: tab === t ? `2px solid ${C.blue}` : '2px solid transparent',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <div className="analyticsBody">
+        <aside className="analyticsSidebar no-print">
+          <nav className="analyticsNav" aria-label="Analytics sections">
+            {TABS.map((t) => (
+              <button
+                type="button"
+                key={t}
+                onClick={() => setTab(t)}
+                className={`analyticsNavItem ${tab === t ? 'active' : ''}`}
+              >
+                <NavIcon name={t} />
+                <span>{t}</span>
+              </button>
+            ))}
+          </nav>
 
-      <div style={{ maxWidth: 1180, margin: '0 auto', padding: '22px' }}>
-        {err && <Banner>{err}</Banner>}
+          <div className="analyticsHelpCard">
+            <div className="analyticsHelpIcon">?</div>
+            <div>
+              <strong>Need help?</strong>
+              <span>Check our internal documentation</span>
+            </div>
+            <ArrowRightIcon />
+          </div>
+        </aside>
 
-        <PrintHeader meta={{ days, channel, region, campaign }} tab={tab} />
+        <main className="analyticsMain">
+          <PrintHeader meta={{ days, channel, region, campaign }} tab={tab} />
 
-        <div
-          className="no-print"
-          style={{
-            display: 'flex',
-            gap: 8,
-            marginBottom: 18,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-          }}
-        >
-          <Filter
-            label="Range"
-            value={days}
-            set={(v) => setDays(Number(v))}
-            opts={[
-              [30, 'Last 30 days'],
-              [90, 'Last 3 months'],
-              [180, 'Last 6 months'],
-              [365, 'Last 12 months'],
-            ]}
-          />
-          <Filter
-            label="Campaign"
-            value={campaign}
-            set={setCampaign}
-            opts={[['All', 'All campaigns'], ...campaigns.map((c) => [c.name, c.name])]}
-          />
-          <Filter
-            label="Channel"
-            value={channel}
-            set={setChannel}
-            opts={[
-              ['All', 'All channels'],
-              ['email', 'Email'],
-              ['push', 'Push'],
-            ]}
-          />
-          <Filter
-            label="Region"
-            value={region}
-            set={setRegion}
-            opts={[['All', 'All regions'], ...regions.map((r) => [r, r])]}
-          />
-          <span style={{ fontSize: 11, color: C.mid, marginLeft: 'auto' }}>
-            {current.length} rows · vs previous {days}d{weekly ? ' · weekly' : ''}
-          </span>
-          <ExportMenu
-            rows={current}
-            agg={agg}
-            aggPrev={aggPrev}
-            tplMap={tplMap}
-            campaigns={campaigns}
-            meta={{ days, channel, region, campaign }}
-          />
-        </div>
+          <div className="analyticsToolbar no-print">
+            <div className="analyticsFilters">
+              <Filter
+                label="Range"
+                icon={<CalendarIcon />}
+                value={days}
+                set={(v) => setDays(Number(v))}
+                opts={[
+                  [30, 'Last 30 days'],
+                  [90, 'Last 3 months'],
+                  [180, 'Last 6 months'],
+                  [365, 'Last 12 months'],
+                ]}
+              />
+              <Filter
+                label="Campaign"
+                value={campaign}
+                set={setCampaign}
+                opts={[['All', 'All campaigns'], ...campaigns.map((c) => [c.name, c.name])]}
+              />
+              <Filter
+                label="Channel"
+                value={channel}
+                set={setChannel}
+                opts={[
+                  ['All', 'All channels'],
+                  ['email', 'Email'],
+                  ['push', 'Push'],
+                ]}
+              />
+              <Filter
+                label="Region"
+                value={region}
+                set={setRegion}
+                opts={[['All', 'All regions'], ...regions.map((r) => [r, r])]}
+              />
+            </div>
 
-        {tab === 'Overview' && (
-          <Overview
-            agg={agg}
-            aggPrev={aggPrev}
-            current={current}
-            complaintRate={complaintRate}
-            bounceRate={bounceRate}
-            weekly={weekly}
-            campaigns={campaigns}
-          />
-        )}
-        {tab === 'Campaigns' && <CampaignsTab current={current} campaigns={campaigns} />}
-        {tab === 'Templates' && <TemplatesTab current={current} tplMap={tplMap} />}
-        {tab === 'Channels' && <Channels current={current} />}
-        {tab === 'Timing' && <TimingTab events={events} current={current} />}
-        {tab === 'Deliverability' && (
-          <Deliverability
-            current={current}
-            agg={agg}
-            complaintRate={complaintRate}
-            bounceRate={bounceRate}
-            weekly={weekly}
-          />
-        )}
+            <div className="analyticsToolbarRight">
+              <span className="analyticsTimeZone">
+                All times displayed in <strong>{timeZone}</strong>
+              </span>
+              <span className="analyticsRowMeta">
+                {current.length} rows · vs previous {days}d{weekly ? ' · weekly' : ''}
+              </span>
+              <ExportMenu
+                rows={current}
+                agg={agg}
+                aggPrev={aggPrev}
+                tplMap={tplMap}
+                campaigns={campaigns}
+                meta={{ days, channel, region, campaign }}
+              />
+            </div>
+          </div>
 
-        <div className="no-print" style={{ textAlign: 'center', fontSize: 11, color: C.mid, padding: '8px 0 24px' }}>
-          Showing mock data · live Mailgun/OneSignal feed connects next.
-        </div>
+          {err && <Banner>{err}</Banner>}
+
+          <div className="analyticsContent">
+            {tab === 'Overview' && (
+              <Overview
+                agg={agg}
+                aggPrev={aggPrev}
+                current={current}
+                previous={previous}
+                scopeCurrent={scopeCurrent}
+                scopePrevious={scopePrevious}
+                complaintRate={complaintRate}
+                bounceRate={bounceRate}
+                weekly={weekly}
+                campaigns={campaigns}
+                tplMap={tplMap}
+              />
+            )}
+            {tab === 'Executive' && (
+              <ExecutiveOverview
+                current={current}
+                previous={previous}
+                scopeCurrent={scopeCurrent}
+                scopePrevious={scopePrevious}
+                campaigns={campaigns}
+                tplMap={tplMap}
+                meta={{ days, channel, region, campaign }}
+              />
+            )}
+            {tab === 'Campaigns' && (
+              <CampaignsTab current={current} previous={previous} scopeCurrent={scopeCurrent} scopePrevious={scopePrevious} campaigns={campaigns} />
+            )}
+            {tab === 'Templates' && <TemplatesTab current={current} tplMap={tplMap} />}
+            {tab === 'Audience' && <AudienceIntelligence current={current} previous={previous} />}
+            {tab === 'Channels' && <Channels current={current} />}
+            {tab === 'Timing' && <TimingTab events={filteredEvents} current={current} />}
+            {tab === 'Journeys' && <JourneyAnalytics journeys={journeys} error={journeyErr} days={days} />}
+            {tab === 'Deliverability' && (
+              <Deliverability
+                current={current}
+                agg={agg}
+                aggPrev={aggPrev}
+                complaintRate={complaintRate}
+                bounceRate={bounceRate}
+                weekly={weekly}
+              />
+            )}
+            {tab === 'Data Quality' && (
+              <DataQuality current={current} tplMap={tplMap} campaigns={campaigns} />
+            )}
+            {tab === 'Alerts' && (
+              <AlertCenter
+                current={current}
+                previous={previous}
+                scopeCurrent={scopeCurrent}
+                campaigns={campaigns}
+                tplMap={tplMap}
+              />
+            )}
+          </div>
+
+          <div className="analyticsFooter no-print">
+            Showing mock data · live Mailgun/OneSignal feed connects next.
+          </div>
+        </main>
       </div>
     </div>
   )
 }
 
-function Overview({ agg, aggPrev, current, complaintRate, bounceRate, weekly, campaigns }) {
-  const openNow = pctNum(agg.uniqueOpens, agg.delivered),
-    openPrev = pctNum(aggPrev.uniqueOpens, aggPrev.delivered)
-  const ctrNow = pctNum(agg.uniqueClicks, agg.delivered),
-    ctrPrev = pctNum(aggPrev.uniqueClicks, aggPrev.delivered)
+function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious, complaintRate, bounceRate, weekly, campaigns, tplMap }) {
+  const openNow = pctNum(agg.uniqueOpens, agg.delivered)
+  const openPrev = pctNum(aggPrev.uniqueOpens, aggPrev.delivered)
+  const ctrNow = pctNum(agg.uniqueClicks, agg.delivered)
+  const ctrPrev = pctNum(aggPrev.uniqueClicks, aggPrev.delivered)
   const trend = buildTrend(current, weekly)
+  const kpiTrend = buildKpiTrend(current, weekly)
   const summary = buildSummary(agg, aggPrev, current)
+  const insights = buildOverviewIntelligence(agg, aggPrev, current)
+  const intelligenceFeed = buildIntelligenceFeed({
+    current, previous, scopeCurrent, scopePrevious, campaigns, tplMap,
+  })
+
   return (
     <>
       {summary && (
-        <div
-          style={{
-            background: C.blueLight,
-            border: `1px solid ${C.blue}22`,
-            borderRadius: 10,
-            padding: '12px 16px',
-            marginBottom: 16,
-            fontSize: 13,
-            color: C.dark,
-            lineHeight: 1.6,
-          }}
-        >
-          <strong style={{ color: C.blue }}>Summary ·</strong> {summary}
+        <div className="analyticsSummary">
+          <div className="analyticsSummaryIcon"><SparkleIcon /></div>
+          <div className="analyticsSummaryText">
+            <strong>Summary</strong>
+            <span>{summary}</span>
+          </div>
         </div>
       )}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))',
-          gap: 12,
-          marginBottom: 22,
-        }}
-      >
+
+      {intelligenceFeed.length > 0 && (
+        <IntelligenceFeed items={intelligenceFeed} />
+      )}
+
+      {insights.length > 0 && (
+        <div className="analyticsInsightGrid analyticsOverviewInsightGrid">
+          {insights.map((item, i) => (
+            <InsightCard key={`${item.title}-${i}`} {...item} />
+          ))}
+        </div>
+      )}
+
+      <div className="analyticsKpiGrid">
         <Kpi
-          ico="📤"
+          ico={<MailIcon />}
           label="Sent"
           val={fmt(agg.sent)}
           clr={C.blue}
           delta={relDelta(agg.sent, aggPrev.sent)}
           goodUp
+          spark={kpiTrend}
+          sparkKey="sent"
+          accent="blue"
         />
         <Kpi
-          ico="✅"
+          ico={<CheckIcon />}
           label="Delivery rate"
           val={pctStr(agg.delivered, agg.sent)}
           clr={C.greenTxt}
           delta={ppDelta(pctNum(agg.delivered, agg.sent), pctNum(aggPrev.delivered, aggPrev.sent))}
           goodUp
+          spark={kpiTrend}
+          sparkKey="deliveryRate"
+          accent="green"
         />
         <Kpi
-          ico="👁"
+          ico={<EyeIcon />}
           label="Open rate"
           val={pctStr(agg.uniqueOpens, agg.delivered)}
           clr={C.green}
           delta={ppDelta(openNow, openPrev)}
           goodUp
           sub={`${fmt(agg.uniqueOpens)} unique`}
+          spark={kpiTrend}
+          sparkKey="openRate"
+          accent="lime"
         />
         <Kpi
-          ico="🖱"
+          ico={<PointerIcon />}
           label="CTR"
           val={pctStr(agg.uniqueClicks, agg.delivered)}
           clr={C.purple}
           delta={ppDelta(ctrNow, ctrPrev)}
           goodUp
+          sub={`${fmt(agg.uniqueClicks)} unique`}
+          spark={kpiTrend}
+          sparkKey="ctr"
+          accent="purple"
         />
         <Kpi
-          ico="🎯"
+          ico={<TargetIcon />}
           label="CTOR"
           val={pctStr(agg.uniqueClicks, agg.uniqueOpens)}
           clr={C.purple}
@@ -448,176 +545,935 @@ function Overview({ agg, aggPrev, current, complaintRate, bounceRate, weekly, ca
           )}
           goodUp
           sub="clicks / opens"
+          spark={kpiTrend}
+          sparkKey="ctor"
+          accent="violet"
         />
         <Kpi
-          ico="🚩"
+          ico={<FlagIcon />}
           label="Complaint rate"
           val={complaintRate.toFixed(3) + '%'}
-          clr={complaintRate > 0.1 ? C.red : C.greenTxt}
+          clr={complaintRate > 0.1 ? C.red : C.green}
           delta={ppDelta(complaintRate, pctNum(aggPrev.complaints, aggPrev.delivered), 3)}
           goodUp={false}
           sub="target < 0.1%"
+          spark={kpiTrend}
+          sparkKey="complaintRate"
+          accent="pink"
         />
         <Kpi
-          ico="↩️"
+          ico={<BounceIcon />}
           label="Bounce rate"
           val={pctStr(agg.hardBounces + agg.softBounces, agg.sent)}
-          clr={bounceRate > 5 ? C.red : C.mid}
+          clr={bounceRate > 5 ? C.red : C.blue}
           delta={ppDelta(
             bounceRate,
             pctNum(aggPrev.hardBounces + aggPrev.softBounces, aggPrev.sent),
           )}
           goodUp={false}
+          spark={kpiTrend}
+          sparkKey="bounceRate"
+          accent="blue"
         />
         <Kpi
-          ico="🚫"
-          label="Unsub rate"
+          ico={<BanIcon />}
+          label="Unsubscribe"
           val={pctStr(agg.unsubscribes, agg.delivered)}
-          clr={C.amber}
+          clr={C.red}
           delta={ppDelta(
             pctNum(agg.unsubscribes, agg.delivered),
             pctNum(aggPrev.unsubscribes, aggPrev.delivered),
           )}
           goodUp={false}
+          spark={kpiTrend}
+          sparkKey="unsubRate"
+          accent="red"
         />
       </div>
+
       <Card
         title="Engagement over time"
-        sub={`Delivered vs unique opens vs clicks${weekly ? ' · by week' : ''}`}
+        sub={`Delivered vs. unique opens vs. clicks${weekly ? ' · by week' : ''}`}
+        className="analyticsEngagementCard"
+        actions={
+          <div className="chartActions no-print">
+            <span className="chartPeriod">{weekly ? 'Weekly' : 'Daily'}</span>
+            <button type="button" className="chartViewButton active" aria-label="Line chart"><TrendIcon /></button>
+            <button type="button" className="chartViewButton" aria-label="Bar chart"><BarsIcon /></button>
+          </div>
+        }
       >
-        <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={trend} margin={{ top: 6, right: 12, left: -8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-            <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.mid }} />
-            <YAxis tick={{ fontSize: 11, fill: C.mid }} />
-            <Tooltip />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Line
-              type="monotone"
-              dataKey="delivered"
-              stroke={C.blue}
-              strokeWidth={2}
-              dot={false}
-              name="Delivered"
-            />
-            <Line
-              type="monotone"
-              dataKey="opens"
-              stroke={C.green}
-              strokeWidth={2}
-              dot={false}
-              name="Unique opens"
-            />
-            <Line
-              type="monotone"
-              dataKey="clicks"
-              stroke={C.purple}
-              strokeWidth={2}
-              dot={false}
-              name="Unique clicks"
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        <div className="analyticsChartWrap">
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={trend} margin={{ top: 14, right: 14, left: -8, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 4" stroke="var(--an-chart-grid)" vertical />
+              <XAxis
+                dataKey="d"
+                tick={{ fontSize: 11, fill: 'var(--an-muted)' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 11, fill: 'var(--an-muted)' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip content={<AnalyticsTooltip />} />
+              <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
+              <Line
+                type="monotone"
+                dataKey="delivered"
+                stroke="#22a8ff"
+                strokeWidth={2.2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                name="Delivered"
+              />
+              <Line
+                type="monotone"
+                dataKey="opens"
+                stroke="#84c561"
+                strokeWidth={2.2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                name="Unique opens"
+              />
+              <Line
+                type="monotone"
+                dataKey="clicks"
+                stroke="#9b5cff"
+                strokeWidth={2.2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                name="Unique clicks"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </Card>
+
+      <AnalyticsFeatureStrip />
     </>
   )
 }
 
-function CampaignsTab({ current, campaigns }) {
+function ExecutiveOverview({ current, previous, scopeCurrent, scopePrevious, campaigns, tplMap, meta }) {
+  const agg = useMemo(() => sumRows(current), [current])
+  const aggPrev = useMemo(() => sumRows(previous), [previous])
+  const metrics = metricsFromAgg(agg)
+  const prevMetrics = metricsFromAgg(aggPrev)
+  const healthScore = buildHealthScore(agg)
+  const health = healthLabel(healthScore)
+  const quality = analyzeDataQuality(current, tplMap, campaigns)
+  const campaignGroups = useMemo(
+    () => enrichCampaignGroups(buildCampaignGroups(current, campaigns)),
+    [current, campaigns],
+  )
+  const topCampaign = [...campaignGroups].sort((a, b) => b.uniqueClicks - a.uniqueClicks)[0]
+  const riskCampaign = [...campaignGroups]
+    .filter((g) => g.status?.tone === 'bad' || g.status?.tone === 'warning')
+    .sort((a, b) => a.open - b.open)[0]
+  const intelligence = buildIntelligenceFeed({
+    current,
+    previous,
+    scopeCurrent,
+    scopePrevious,
+    campaigns,
+    tplMap,
+  }).slice(0, 4)
+  const brief = useMemo(() => buildWeeklyBrief(current, campaigns, tplMap), [current, campaigns, tplMap])
+  const trend = useMemo(() => buildKpiTrend(current, false).slice(-30), [current])
+
+  return (
+    <>
+      <div className="analyticsExecutiveHero">
+        <div>
+          <span className="analyticsIntelEyebrow">EXECUTIVE OVERVIEW</span>
+          <h2>Marketing performance at a glance</h2>
+          <p>
+            A decision-focused view of engagement, deliverability, campaign momentum and reporting
+            quality inside the active filters.
+          </p>
+        </div>
+        <div className={`analyticsExecutiveScore analyticsExecutiveScore-${health.tone}`}>
+          <span>Marketing health</span>
+          <strong>{healthScore}</strong>
+          <small>{health.label} · data quality {quality.score}/100</small>
+        </div>
+      </div>
+
+      <div className="analyticsExecutiveKpis">
+        <ExecutiveMetric
+          label="Delivered reach"
+          value={fmt(agg.delivered)}
+          delta={relDelta(agg.delivered, aggPrev.delivered)}
+          detail={`${metrics.delivery.toFixed(1)}% delivery rate`}
+          tone="blue"
+        />
+        <ExecutiveMetric
+          label="Open rate"
+          value={`${metrics.open.toFixed(1)}%`}
+          delta={ppDelta(metrics.open, prevMetrics.open)}
+          detail={`${fmt(agg.uniqueOpens)} unique opens`}
+          tone="green"
+        />
+        <ExecutiveMetric
+          label="CTR"
+          value={`${metrics.ctr.toFixed(1)}%`}
+          delta={ppDelta(metrics.ctr, prevMetrics.ctr)}
+          detail={`${fmt(agg.uniqueClicks)} unique clicks`}
+          tone="purple"
+        />
+        <ExecutiveMetric
+          label="Data quality"
+          value={`${quality.score}/100`}
+          detail={`${quality.issues?.length || 0} active quality finding${quality.issues?.length === 1 ? '' : 's'}`}
+          tone={quality.score >= 90 ? 'green' : quality.score >= 75 ? 'amber' : 'red'}
+        />
+      </div>
+
+      <div className="analyticsExecutiveGrid">
+        <Card
+          title="What matters now"
+          sub="Highest-priority signals from campaign, audience and data-quality intelligence"
+          className="analyticsExecutiveSignals"
+        >
+          {intelligence.length ? (
+            <div className="analyticsExecutiveSignalList">
+              {intelligence.map((item, index) => (
+                <div className={`analyticsExecutiveSignal ${item.severity || item.tone || 'info'}`} key={`${item.title}-${index}`}>
+                  <span className="analyticsExecutiveSignalMark">{index + 1}</span>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.text}</p>
+                    {item.action && <small>{item.action}</small>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="analyticsHealthyState">
+              <ShieldIcon />
+              <strong>No material risk signal in the current scope</strong>
+              <span>Performance is inside the dashboard's current comparison thresholds.</span>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Leadership snapshot" sub="The strongest result and the clearest place to investigate">
+          <div className="analyticsLeadershipCards">
+            <div className="analyticsLeadershipCard positive">
+              <span>Top campaign by unique clicks</span>
+              <strong>{topCampaign?.label || '—'}</strong>
+              <p>
+                {topCampaign
+                  ? `${fmt(topCampaign.uniqueClicks)} clicks · ${topCampaign.ctr.toFixed(1)}% CTR · ${topCampaign.open.toFixed(1)}% open`
+                  : 'No campaign activity in the selected scope.'}
+              </p>
+            </div>
+            <div className={`analyticsLeadershipCard ${riskCampaign ? 'warning' : 'positive'}`}>
+              <span>{riskCampaign ? 'Needs attention' : 'Risk check'}</span>
+              <strong>{riskCampaign?.label || 'No campaign flagged'}</strong>
+              <p>
+                {riskCampaign
+                  ? `${riskCampaign.open.toFixed(1)}% open · ${riskCampaign.ctr.toFixed(1)}% CTR · ${riskCampaign.status.label}`
+                  : 'No campaign currently falls into the dashboard warning/risk band.'}
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card title="30-day executive trend" sub="Open rate, CTR and delivery rate · daily">
+        <ResponsiveContainer width="100%" height={245}>
+          <LineChart data={trend} margin={{ top: 8, right: 10, left: -10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 4" stroke={C.border} />
+            <XAxis dataKey="d" tick={{ fontSize: 10, fill: C.mid }} />
+            <YAxis tick={{ fontSize: 10, fill: C.mid }} unit="%" />
+            <Tooltip content={<AnalyticsTooltip />} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Line type="monotone" dataKey="openRate" name="Open %" stroke={C.green} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="ctr" name="CTR %" stroke={C.purple} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="deliveryRate" name="Delivery %" stroke={C.blue} strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <WeeklyBriefCard brief={brief} meta={meta} />
+    </>
+  )
+}
+
+function ExecutiveMetric({ label, value, delta, detail, tone = 'blue' }) {
+  return (
+    <div className={`analyticsExecutiveMetric ${tone}`}>
+      <span>{label}</span>
+      <div>
+        <strong>{value}</strong>
+        {delta && <DeltaBadge delta={delta} goodUp />}
+      </div>
+      <p>{detail}</p>
+    </div>
+  )
+}
+
+function WeeklyBriefCard({ brief, meta }) {
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(brief.text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch {
+      // Clipboard can be blocked by browser policy; the download action remains available.
+    }
+  }
+
+  const download = () => downloadTextFile(
+    `marketing-weekly-brief-${brief.endDate || 'latest'}.txt`,
+    brief.text,
+  )
+
+  return (
+    <Card
+      title="Automatic weekly marketing brief"
+      sub={`Rolling 7-day brief vs the preceding 7 days · inherits the active channel/region/campaign scope`}
+      className="analyticsWeeklyBriefCard"
+      actions={
+        <div className="analyticsBriefActions no-print">
+          <button type="button" className="analyticsTextButton" onClick={copy}>
+            <CopyIcon /> {copied ? 'Copied' : 'Copy brief'}
+          </button>
+          <button type="button" className="analyticsTextButton" onClick={download}>
+            <DownloadIcon /> Download
+          </button>
+        </div>
+      }
+    >
+      {!brief.hasData ? (
+        <Empty>Not enough activity is available to generate a weekly brief.</Empty>
+      ) : (
+        <div className="analyticsWeeklyBrief">
+          <div className="analyticsBriefHeader">
+            <div>
+              <span>WEEK ENDING</span>
+              <strong>{brief.endLabel}</strong>
+            </div>
+            <div>
+              <span>SCOPE</span>
+              <strong>{meta.channel} · {meta.region} · {meta.campaign}</strong>
+            </div>
+          </div>
+          <div className="analyticsBriefMetrics">
+            {brief.metrics.map((item) => (
+              <div key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <MetricDelta value={item.delta} suffix={item.suffix || 'pp'} />
+              </div>
+            ))}
+          </div>
+          <div className="analyticsBriefNarrative">
+            <h3>What changed</h3>
+            <ul>
+              {brief.bullets.map((bullet, i) => <li key={`${bullet}-${i}`}>{bullet}</li>)}
+            </ul>
+          </div>
+          <div className="analyticsBriefRecommendation">
+            <SparkleIcon />
+            <div>
+              <span>Recommended focus</span>
+              <strong>{brief.recommendation}</strong>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function CampaignsTab({ current, previous, scopeCurrent, scopePrevious, campaigns }) {
+  const [drillName, setDrillName] = useState(null)
+  const [compareNames, setCompareNames] = useState([])
+
   if (!campaigns.length)
     return (
-      <Card title="Campaigns" sub="">
+      <Card title="Campaign Intelligence" sub="">
         <Empty>
           No campaigns yet. Create one in the Payload admin (/admin → Campaigns) and assign
           templates to it.
         </Empty>
       </Card>
     )
-  const groups = campaigns
-    .map((c) => {
-      const keys = new Set(c.keys)
-      const rows = current.filter((r) => keys.has(r.templateKey))
-      return { label: c.name, color: c.color, templateCount: c.keys.length, ...sumRows(rows) }
+
+  const visibleGroups = buildCampaignGroups(current, campaigns)
+  const visiblePrevByName = new Map(buildCampaignGroups(previous, campaigns).map((g) => [g.label, g]))
+  const cohortGroups = buildCampaignGroups(scopeCurrent, campaigns)
+  const cohortPrevByName = new Map(buildCampaignGroups(scopePrevious, campaigns).map((g) => [g.label, g]))
+
+  const cohortEnriched = enrichCampaignGroups(cohortGroups, cohortPrevByName)
+  const benchmark = buildCampaignBenchmark(cohortEnriched)
+  const enriched = enrichCampaignGroups(visibleGroups, visiblePrevByName, benchmark)
+
+  if (drillName) {
+    const campaign = campaigns.find((c) => c.name === drillName)
+    if (campaign) {
+      return (
+        <Campaign360View
+          campaign={campaign}
+          current={scopeCurrent}
+          previous={scopePrevious}
+          cohort={cohortEnriched}
+          onClose={() => setDrillName(null)}
+        />
+      )
+    }
+  }
+
+  const populated = enriched.filter((g) => g.sent > 0)
+  const bestOpen = [...populated].sort((a, b) => b.open - a.open)[0]
+  const bestCtr = [...populated].sort((a, b) => b.ctr - a.ctr)[0]
+  const biggestMover = [...populated]
+    .filter((g) => Number.isFinite(g.openDelta))
+    .sort((a, b) => Math.abs(b.openDelta) - Math.abs(a.openDelta))[0]
+  const needsAttention = populated.find((g) => g.status.tone === 'bad')
+  const intelligence = buildCampaignIntelligence(populated, benchmark)
+
+  const toggleCompare = (name) => {
+    setCompareNames((prev) => {
+      if (prev.includes(name)) return prev.filter((x) => x !== name)
+      if (prev.length >= 4) return [...prev.slice(1), name]
+      return [...prev, name]
     })
-    .sort((a, b) => pctNum(b.uniqueOpens, b.delivered) - pctNum(a.uniqueOpens, a.delivered))
+  }
+
+  const comparison = compareNames
+    .map((name) => cohortEnriched.find((g) => g.label === name))
+    .filter(Boolean)
 
   return (
     <>
-      <Card title="Campaign performance" sub="Each campaign aggregates all its assigned templates">
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart
-            data={groups.map((g) => ({
-              name: g.label,
-              open: +pctNum(g.uniqueOpens, g.delivered).toFixed(1),
-              ctr: +pctNum(g.uniqueClicks, g.delivered).toFixed(1),
-            }))}
-            margin={{ top: 6, right: 12, left: -8, bottom: 0 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-            <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.mid }} />
-            <YAxis tick={{ fontSize: 11, fill: C.mid }} unit="%" />
-            <Tooltip />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="open" fill={C.green} name="Open rate %" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="ctr" fill={C.purple} name="CTR %" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+      <div className="analyticsIntelHeader">
+        <div>
+          <span className="analyticsIntelEyebrow">CAMPAIGN INTELLIGENCE</span>
+          <h2>What is driving performance?</h2>
+          <p>
+            The benchmark engine uses the median and interquartile range of comparable campaigns
+            inside the current date, channel and region scope, so high-volume campaigns cannot
+            distort the benchmark.
+          </p>
+        </div>
+        <div className="analyticsBenchmarkPill analyticsBenchmarkEnginePill">
+          <span>Comparable-campaign median</span>
+          <strong>{benchmark.open.toFixed(1)}% open · {benchmark.ctr.toFixed(1)}% CTR</strong>
+          <small>{benchmark.count} campaign{benchmark.count === 1 ? '' : 's'} in cohort</small>
+        </div>
+      </div>
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat
+          label="Best open rate"
+          value={bestOpen ? `${bestOpen.open.toFixed(1)}%` : '—'}
+          detail={bestOpen?.label || 'No campaign data'}
+          tone="green"
+          icon={<EyeIcon />}
+        />
+        <MiniStat
+          label="Best CTR"
+          value={bestCtr ? `${bestCtr.ctr.toFixed(1)}%` : '—'}
+          detail={bestCtr?.label || 'No campaign data'}
+          tone="purple"
+          icon={<PointerIcon />}
+        />
+        <MiniStat
+          label="Biggest movement"
+          value={biggestMover ? `${biggestMover.openDelta >= 0 ? '+' : ''}${biggestMover.openDelta.toFixed(1)}pp` : '—'}
+          detail={biggestMover?.label || 'No previous-period signal'}
+          tone={biggestMover?.openDelta >= 0 ? 'green' : 'amber'}
+          icon={<TrendIcon />}
+        />
+        <MiniStat
+          label="Needs attention"
+          value={needsAttention ? needsAttention.status.label : 'Healthy'}
+          detail={needsAttention?.label || 'No high-risk campaign detected'}
+          tone={needsAttention ? 'red' : 'green'}
+          icon={<AlertIcon />}
+        />
+      </div>
+
+      <Card
+        title="Benchmark engine"
+        sub="Median + IQR across comparable campaigns · weighted-volume distortion removed"
+      >
+        <div className="analyticsBenchmarkGrid">
+          <BenchmarkMetric label="Open rate" metric={benchmark.openStats} suffix="%" tone="green" />
+          <BenchmarkMetric label="CTR" metric={benchmark.ctrStats} suffix="%" tone="purple" />
+          <BenchmarkMetric label="CTOR" metric={benchmark.ctorStats} suffix="%" tone="blue" />
+          <BenchmarkMetric label="Delivery" metric={benchmark.deliveryStats} suffix="%" tone="green" />
+        </div>
       </Card>
-      <Card title="Campaign leaderboard" sub="Sorted by open rate">
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+
+      {intelligence.length > 0 && (
+        <div className="analyticsInsightGrid">
+          {intelligence.map((item, i) => (
+            <InsightCard key={`${item.title}-${i}`} {...item} />
+          ))}
+        </div>
+      )}
+
+      <Card
+        title="Campaign comparison lab"
+        sub="Select 2–4 campaigns for a normalized side-by-side comparison"
+        actions={
+          <button
+            type="button"
+            className="analyticsTextButton no-print"
+            onClick={() => setCompareNames(cohortEnriched.slice(0, 3).map((g) => g.label))}
+            disabled={cohortEnriched.length < 2}
+          >
+            Compare top {Math.min(3, cohortEnriched.length)}
+          </button>
+        }
+      >
+        <div className="analyticsComparePicker no-print">
+          {cohortEnriched.map((g) => {
+            const active = compareNames.includes(g.label)
+            return (
+              <button
+                type="button"
+                key={g.label}
+                className={`analyticsCompareChip ${active ? 'active' : ''}`}
+                onClick={() => toggleCompare(g.label)}
+              >
+                <span className="analyticsCampaignDot" style={{ background: g.color || C.mid }} />
+                {g.label}
+                {active && <CheckIcon />}
+              </button>
+            )
+          })}
+        </div>
+
+        {comparison.length >= 2 ? (
+          <CampaignComparison groups={comparison} benchmark={benchmark} />
+        ) : (
+          <Empty>Select at least two campaigns to compare. Up to four can be compared at once.</Empty>
+        )}
+      </Card>
+
+      <Card
+        title="Campaign performance"
+        sub="Open rate and CTR by campaign · current filtered period"
+      >
+        {populated.length ? (
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart
+              data={populated.map((g) => ({
+                name: g.label,
+                open: +g.open.toFixed(1),
+                ctr: +g.ctr.toFixed(1),
+              }))}
+              margin={{ top: 6, right: 12, left: -8, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.mid }} />
+              <YAxis tick={{ fontSize: 11, fill: C.mid }} unit="%" />
+              <Tooltip content={<AnalyticsTooltip />} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar dataKey="open" fill={C.green} name="Open rate %" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="ctr" fill={C.purple} name="CTR %" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <Empty>No campaign has data in the selected period.</Empty>
+        )}
+      </Card>
+
+      <Card
+        title="Campaign leaderboard"
+        sub="Open a 360° view for timeline, cohort benchmark, region, channel and template contribution"
+      >
+        <div className="analyticsTableWrap">
+          <table className="analyticsDataTable analyticsCampaignTable">
             <thead>
               <tr>
-                <th style={{ ...thR, textAlign: 'left' }}>Campaign</th>
-                {['Templates', 'Sent', 'Deliv %', 'Open %', 'CTR %', 'CTOR %', 'Unsub'].map((h) => (
-                  <th key={h} style={thR}>
-                    {h}
-                  </th>
-                ))}
+                <th>Campaign</th>
+                <th>Status</th>
+                <th>Templates</th>
+                <th>Sent</th>
+                <th>Delivery</th>
+                <th>Open</th>
+                <th>vs prev.</th>
+                <th>CTR</th>
+                <th>CTOR</th>
+                <th>Bounce</th>
+                <th className="no-print">Explore</th>
               </tr>
             </thead>
             <tbody>
-              {groups.map((g, i) => {
-                const open = pctNum(g.uniqueOpens, g.delivered)
-                return (
-                  <tr key={i} style={{ background: i % 2 ? C.bg : C.white }}>
-                    <td style={{ ...tdR, textAlign: 'left', fontWeight: 700 }}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          width: 8,
-                          height: 8,
-                          borderRadius: 2,
-                          background: g.color || C.mid,
-                          marginRight: 7,
-                        }}
-                      />
-                      {g.label}
-                    </td>
-                    <td style={tdR}>{g.templateCount}</td>
-                    <td style={tdR}>{fmt(g.sent)}</td>
-                    <td style={tdR}>{pctStr(g.delivered, g.sent)}</td>
-                    <td style={{ ...tdR, color: rateColor(open), fontWeight: 700 }}>
-                      {open.toFixed(1)}%
-                    </td>
-                    <td style={{ ...tdR, color: C.purple, fontWeight: 600 }}>
-                      {pctNum(g.uniqueClicks, g.delivered).toFixed(1)}%
-                    </td>
-                    <td style={tdR}>{pctNum(g.uniqueClicks, g.uniqueOpens).toFixed(1)}%</td>
-                    <td style={tdR}>{fmt(g.unsubscribes)}</td>
-                  </tr>
-                )
-              })}
+              {populated.length === 0 && (
+                <tr><td colSpan={11} className="analyticsTableEmpty">No data</td></tr>
+              )}
+              {populated.map((g) => (
+                <tr key={g.label}>
+                  <td>
+                    <div className="analyticsCampaignName">
+                      <span className="analyticsCampaignDot" style={{ background: g.color || C.mid }} />
+                      <div>
+                        <strong>{g.label}</strong>
+                        <span>{g.templateCount} assigned template{g.templateCount === 1 ? '' : 's'}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td><StatusBadge {...g.status} /></td>
+                  <td>{g.templateCount}</td>
+                  <td>{fmt(g.sent)}</td>
+                  <td>{g.delivery.toFixed(1)}%</td>
+                  <td><strong style={{ color: rateColor(g.open) }}>{g.open.toFixed(1)}%</strong></td>
+                  <td><MetricDelta value={g.openDelta} /></td>
+                  <td><strong style={{ color: C.purple }}>{g.ctr.toFixed(1)}%</strong></td>
+                  <td>{g.ctor.toFixed(1)}%</td>
+                  <td className={g.bounce > 5 ? 'analyticsRiskText' : ''}>{g.bounce.toFixed(1)}%</td>
+                  <td className="no-print">
+                    <button
+                      type="button"
+                      className="analyticsExploreButton"
+                      onClick={() => setDrillName(g.label)}
+                    >
+                      360° <ArrowRightIcon />
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+      </Card>
+
+      <CampaignCalendar current={current} campaigns={campaigns} />
+    </>
+  )
+}
+
+function CampaignCalendar({ current, campaigns }) {
+  const entries = useMemo(() => buildCampaignCalendarEntries(current, campaigns), [current, campaigns])
+  const months = useMemo(
+    () => [...new Set(entries.map((item) => item.month))].sort(),
+    [entries],
+  )
+  const [month, setMonth] = useState(() => months[months.length - 1] || '')
+
+  useEffect(() => {
+    if (!months.length) {
+      if (month) setMonth('')
+      return
+    }
+    if (!month || !months.includes(month)) setMonth(months[months.length - 1])
+  }, [months, month])
+
+  if (!entries.length) {
+    return (
+      <Card title="Campaign calendar" sub="Campaign activity mapped from assigned template activity">
+        <Empty>No campaign activity is available for the selected filters.</Empty>
+      </Card>
+    )
+  }
+
+  const monthIndex = Math.max(0, months.indexOf(month))
+  const monthEntries = entries.filter((item) => item.month === month)
+  const byDay = new Map()
+  for (const item of monthEntries) {
+    if (!byDay.has(item.date)) byDay.set(item.date, [])
+    byDay.get(item.date).push(item)
+  }
+  for (const list of byDay.values()) list.sort((a, b) => b.sent - a.sent)
+
+  const [year, monthNumber] = month.split('-').map(Number)
+  const first = new Date(year, monthNumber - 1, 1)
+  const daysInMonth = new Date(year, monthNumber, 0).getDate()
+  const firstDow = (first.getDay() + 6) % 7
+  const cells = []
+  for (let i = 0; i < firstDow; i += 1) cells.push(null)
+  for (let day = 1; day <= daysInMonth; day += 1) cells.push(day)
+  while (cells.length % 7) cells.push(null)
+
+  const totalSends = monthEntries.reduce((sum, item) => sum + item.sent, 0)
+  const activeDays = byDay.size
+  const busiest = [...byDay.entries()]
+    .map(([date, list]) => ({ date, sent: list.reduce((sum, item) => sum + item.sent, 0) }))
+    .sort((a, b) => b.sent - a.sent)[0]
+
+  const move = (step) => {
+    const next = Math.min(months.length - 1, Math.max(0, monthIndex + step))
+    setMonth(months[next])
+  }
+
+  return (
+    <Card
+      title="Campaign calendar"
+      sub="Daily campaign activity inferred from assigned template sends · overlapping campaign assignments can attribute the same template activity to more than one campaign"
+      className="analyticsCampaignCalendarCard"
+      actions={
+        <div className="analyticsCalendarNav no-print">
+          <button type="button" onClick={() => move(-1)} disabled={monthIndex <= 0} aria-label="Previous month">
+            <ArrowLeftIcon />
+          </button>
+          <strong>{calendarMonthLabel(month)}</strong>
+          <button type="button" onClick={() => move(1)} disabled={monthIndex >= months.length - 1} aria-label="Next month">
+            <ArrowRightIcon />
+          </button>
+        </div>
+      }
+    >
+      <div className="analyticsCalendarSummary">
+        <div><span>Attributed sends</span><strong>{fmt(totalSends)}</strong></div>
+        <div><span>Active days</span><strong>{activeDays}</strong></div>
+        <div><span>Busiest day</span><strong>{busiest ? formatShortDate(busiest.date) : '—'}</strong></div>
+        <div><span>Campaigns active</span><strong>{new Set(monthEntries.map((item) => item.campaign)).size}</strong></div>
+      </div>
+
+      <div className="analyticsCalendarGrid">
+        {DOW.map((day) => <div className="analyticsCalendarDow" key={day}>{day}</div>)}
+        {cells.map((day, index) => {
+          if (!day) return <div className="analyticsCalendarCell empty" key={`empty-${index}`} />
+          const date = `${year}-${String(monthNumber).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const items = byDay.get(date) || []
+          return (
+            <div className={`analyticsCalendarCell ${items.length ? 'active' : ''}`} key={date}>
+              <div className="analyticsCalendarDate">{day}</div>
+              <div className="analyticsCalendarEvents">
+                {items.slice(0, 3).map((item) => (
+                  <div className="analyticsCalendarEvent" key={`${date}-${item.campaign}`} title={`${item.campaign}: ${fmt(item.sent)} sent · ${item.open.toFixed(1)}% open · ${item.ctr.toFixed(1)}% CTR`}>
+                    <i style={{ background: item.color || C.blue }} />
+                    <div>
+                      <strong>{item.campaign}</strong>
+                      <span>{fmt(item.sent)} sent · {item.ctr.toFixed(1)}% CTR</span>
+                    </div>
+                  </div>
+                ))}
+                {items.length > 3 && <small>+{items.length - 3} more</small>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
+function BenchmarkMetric({ label, metric, suffix = '', tone = 'blue' }) {
+  return (
+    <div className={`analyticsBenchmarkMetric ${tone}`}>
+      <div className="analyticsBenchmarkMetricTop">
+        <span>{label}</span>
+        <strong>{metric.median.toFixed(1)}{suffix}</strong>
+      </div>
+      <div className="analyticsBenchmarkTrack">
+        <span className="analyticsBenchmarkRange" style={{ left: `${metric.q1Pct}%`, width: `${Math.max(2, metric.q3Pct - metric.q1Pct)}%` }} />
+        <i style={{ left: `${metric.medianPct}%` }} />
+      </div>
+      <small>P25 {metric.q1.toFixed(1)}{suffix} · P75 {metric.q3.toFixed(1)}{suffix}</small>
+    </div>
+  )
+}
+
+function CampaignComparison({ groups, benchmark }) {
+  const chart = groups.map((g) => ({
+    name: g.label,
+    open: +g.open.toFixed(1),
+    ctr: +g.ctr.toFixed(1),
+    ctor: +g.ctor.toFixed(1),
+  }))
+  const clickWinner = [...groups].sort((a, b) => b.uniqueClicks - a.uniqueClicks)[0]
+  const efficiencyWinner = [...groups].sort((a, b) => b.ctor - a.ctor)[0]
+  const volumeLeader = [...groups].sort((a, b) => b.sent - a.sent)[0]
+
+  return (
+    <div className="analyticsComparisonWrap">
+      <div className="analyticsComparisonCallouts">
+        <div><span>Most clicks</span><strong>{clickWinner.label}</strong><small>{fmt(clickWinner.uniqueClicks)} unique</small></div>
+        <div><span>Best click efficiency</span><strong>{efficiencyWinner.label}</strong><small>{efficiencyWinner.ctor.toFixed(1)}% CTOR</small></div>
+        <div><span>Highest volume</span><strong>{volumeLeader.label}</strong><small>{fmt(volumeLeader.sent)} sent</small></div>
+      </div>
+
+      <div className="analyticsComparisonChart">
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={chart} margin={{ top: 12, right: 8, left: -12, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+            <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.mid }} />
+            <YAxis tick={{ fontSize: 10, fill: C.mid }} unit="%" />
+            <Tooltip content={<AnalyticsTooltip />} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Bar dataKey="open" name="Open %" fill={C.green} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="ctr" name="CTR %" fill={C.purple} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="ctor" name="CTOR %" fill={C.blue} radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="analyticsTableWrap">
+        <table className="analyticsDataTable analyticsComparisonTable">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              {groups.map((g) => <th key={g.label}>{g.label}</th>)}
+              <th>Benchmark</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ['Sent', (g) => fmt(g.sent), '—'],
+              ['Delivery', (g) => `${g.delivery.toFixed(1)}%`, `${benchmark.delivery.toFixed(1)}%`],
+              ['Open rate', (g) => `${g.open.toFixed(1)}%`, `${benchmark.open.toFixed(1)}%`],
+              ['CTR', (g) => `${g.ctr.toFixed(1)}%`, `${benchmark.ctr.toFixed(1)}%`],
+              ['CTOR', (g) => `${g.ctor.toFixed(1)}%`, `${benchmark.ctor.toFixed(1)}%`],
+              ['Bounce', (g) => `${g.bounce.toFixed(1)}%`, `${benchmark.bounce.toFixed(1)}%`],
+              ['Complaints', (g) => `${g.complaints.toFixed(3)}%`, `${benchmark.complaints.toFixed(3)}%`],
+            ].map(([label, fn, bench]) => (
+              <tr key={label}>
+                <td><strong>{label}</strong></td>
+                {groups.map((g) => <td key={g.label}>{fn(g)}</td>)}
+                <td className="analyticsBenchmarkCell">{bench}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function Campaign360View({ campaign, current, previous, cohort, onClose }) {
+  const keys = new Set(campaign.keys)
+  const rows = current.filter((r) => keys.has(r.templateKey))
+  const prevRows = previous.filter((r) => keys.has(r.templateKey))
+  const agg = sumRows(rows)
+  const prev = sumRows(prevRows)
+  const metrics = metricsFromAgg(agg)
+  const prevMetrics = metricsFromAgg(prev)
+  const peerGroups = cohort.filter((g) => g.label !== campaign.name)
+  const peerBenchmark = buildCampaignBenchmark(peerGroups.length ? peerGroups : cohort)
+  const status = campaignStatus({ ...metrics, benchmark: peerBenchmark })
+  const score = campaignPerformanceScore(metrics, peerBenchmark)
+  const trend = buildKpiTrend(rows, false)
+  const regions = metricGroups(rows, 'region', 'region')
+  const channels = metricGroups(rows, 'channel', 'channel')
+  const templates = metricGroups(rows, 'templateKey', 'templateName')
+  const insights = buildCampaign360Insights(campaign.name, metrics, prevMetrics, peerBenchmark, regions, templates)
+
+  return (
+    <>
+      <div className="analyticsDrillHeader">
+        <button type="button" className="analyticsBackButton no-print" onClick={onClose}>
+          <ArrowLeftIcon /> Campaigns
+        </button>
+        <div className="analyticsDrillTitle">
+          <div className="analyticsCampaignDotLarge" style={{ background: campaign.color || C.blue }} />
+          <div>
+            <span className="analyticsIntelEyebrow">CAMPAIGN 360°</span>
+            <h2>{campaign.name}</h2>
+            <p>{campaign.templateCount || campaign.keys.length} assigned templates · current scope</p>
+          </div>
+        </div>
+        <div className="analyticsDrillScore">
+          <span>Performance score</span>
+          <strong>{score}</strong>
+          <StatusBadge {...status} />
+        </div>
+      </div>
+
+      <div className="analyticsKpiGrid analyticsDrillKpis">
+        <Kpi ico={<MailIcon />} label="Sent" val={fmt(agg.sent)} clr={C.blue} delta={relDelta(agg.sent, prev.sent)} goodUp spark={trend} sparkKey="sent" accent="blue" />
+        <Kpi ico={<CheckIcon />} label="Delivery" val={`${metrics.delivery.toFixed(1)}%`} clr={C.greenTxt} delta={ppDelta(metrics.delivery, prevMetrics.delivery)} goodUp spark={trend} sparkKey="deliveryRate" accent="green" />
+        <Kpi ico={<EyeIcon />} label="Open rate" val={`${metrics.open.toFixed(1)}%`} clr={C.green} delta={ppDelta(metrics.open, prevMetrics.open)} goodUp spark={trend} sparkKey="openRate" accent="lime" />
+        <Kpi ico={<PointerIcon />} label="CTR" val={`${metrics.ctr.toFixed(1)}%`} clr={C.purple} delta={ppDelta(metrics.ctr, prevMetrics.ctr)} goodUp spark={trend} sparkKey="ctr" accent="purple" />
+        <Kpi ico={<TargetIcon />} label="CTOR" val={`${metrics.ctor.toFixed(1)}%`} clr={C.purple} delta={ppDelta(metrics.ctor, prevMetrics.ctor)} goodUp spark={trend} sparkKey="ctor" accent="violet" />
+        <Kpi ico={<BounceIcon />} label="Bounce" val={`${metrics.bounce.toFixed(1)}%`} clr={metrics.bounce > 5 ? C.red : C.blue} delta={ppDelta(metrics.bounce, prevMetrics.bounce)} goodUp={false} spark={trend} sparkKey="bounceRate" accent="red" />
+      </div>
+
+      <Card title="Campaign vs peer benchmark" sub="Peer benchmark excludes this campaign and uses the median of the remaining comparable campaigns">
+        <div className="analyticsCampaignVsBenchmark">
+          {[
+            ['Open rate', metrics.open, peerBenchmark.open, 'green'],
+            ['CTR', metrics.ctr, peerBenchmark.ctr, 'purple'],
+            ['CTOR', metrics.ctor, peerBenchmark.ctor, 'blue'],
+            ['Delivery', metrics.delivery, peerBenchmark.delivery, 'green'],
+          ].map(([label, value, bench, tone]) => (
+            <div className={`analyticsVsMetric ${tone}`} key={label}>
+              <span>{label}</span>
+              <strong>{value.toFixed(1)}%</strong>
+              <MetricDelta value={value - bench} />
+              <small>peer median {bench.toFixed(1)}%</small>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {insights.length > 0 && (
+        <div className="analyticsInsightGrid">
+          {insights.map((item, i) => <InsightCard key={`${item.title}-${i}`} {...item} />)}
+        </div>
+      )}
+
+      <Card title="Performance timeline" sub="Daily rates for this campaign inside the selected global scope">
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={trend} margin={{ top: 12, right: 10, left: -10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 4" stroke={C.border} />
+            <XAxis dataKey="d" tick={{ fontSize: 10, fill: C.mid }} />
+            <YAxis tick={{ fontSize: 10, fill: C.mid }} unit="%" />
+            <Tooltip content={<AnalyticsTooltip />} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Line type="monotone" dataKey="openRate" name="Open %" stroke={C.green} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="ctr" name="CTR %" stroke={C.purple} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="deliveryRate" name="Delivery %" stroke={C.blue} strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <div className="analyticsTwoCol analyticsDrillBreakdowns">
+        <Card title="Region contribution" sub="Performance and click contribution by region">
+          <IntelligenceLeaderboard groups={regions} label="Region" />
+        </Card>
+        <Card title="Channel contribution" sub="Email / push mix for this campaign">
+          <IntelligenceLeaderboard groups={channels} label="Channel" />
+        </Card>
+      </div>
+
+      <Card title="Template contribution" sub="Which assigned templates are creating the campaign result">
+        <IntelligenceLeaderboard groups={templates} label="Template" limit={15} />
       </Card>
     </>
   )
 }
 
+function IntelligenceLeaderboard({ groups, label, limit = 10 }) {
+  const sorted = [...groups].sort((a, b) => b.uniqueClicks - a.uniqueClicks).slice(0, limit)
+  return (
+    <div className="analyticsTableWrap">
+      <table className="analyticsDataTable">
+        <thead><tr><th>{label}</th><th>Sent</th><th>Open</th><th>CTR</th><th>CTOR</th><th>Clicks</th></tr></thead>
+        <tbody>
+          {sorted.length === 0 && <tr><td colSpan={6} className="analyticsTableEmpty">No data</td></tr>}
+          {sorted.map((g) => (
+            <tr key={g.label}>
+              <td><strong>{g.label}</strong></td>
+              <td>{fmt(g.sent)}</td>
+              <td>{g.open.toFixed(1)}%</td>
+              <td>{g.ctr.toFixed(1)}%</td>
+              <td>{g.ctor.toFixed(1)}%</td>
+              <td>{fmt(g.uniqueClicks)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function TemplatesTab({ current, tplMap }) {
   const [mode, setMode] = useState('theme')
+  const [section, setSection] = useState('performance')
+
   const groups = useMemo(() => {
     const keyFn = (r) => {
       const name =
@@ -625,66 +1481,681 @@ function TemplatesTab({ current, tplMap }) {
         r.templateName ||
         r.templateKey ||
         ''
-      if (mode === 'template') return r.templateName || r.templateKey || '\u2014'
+
+      if (mode === 'template') return r.templateName || r.templateKey || '—'
       if (mode === 'family')
         return (tplMap[r.templateKey] && tplMap[r.templateKey].family) || familyOfName(name)
-      return themeOf(name) // theme
+      return themeOf(name)
     }
+
     const map = new Map()
     for (const r of current) {
       const k = keyFn(r)
       if (!map.has(k)) map.set(k, { label: k, rows: [] })
       map.get(k).rows.push(r)
     }
-    const arr = [...map.values()].map((g) => ({ label: g.label, ...sumRows(g.rows) }))
-    // grouped views sort by volume; template view by open rate
-    if (mode === 'template')
+
+    const arr = [...map.values()].map((g) => ({
+      label: g.label,
+      ...sumRows(g.rows),
+    }))
+
+    if (mode === 'template') {
       arr.sort((a, b) => pctNum(b.uniqueOpens, b.delivered) - pctNum(a.uniqueOpens, a.delivered))
-    else arr.sort((a, b) => b.sent - a.sent)
+    } else {
+      arr.sort((a, b) => b.sent - a.sent)
+    }
+
     return arr
   }, [current, tplMap, mode])
+
+  const templateKeys = [...new Set(current.map((r) => r.templateKey).filter(Boolean))]
+  const mappedCount = templateKeys.filter((key) => tplMap[key]).length
+  const unmappedKeys = templateKeys.filter((key) => !tplMap[key])
+  const coverage = templateKeys.length ? (mappedCount / templateKeys.length) * 100 : 100
+
+  const templateGroups = useMemo(() => {
+    const map = new Map()
+    for (const r of current) {
+      const key = r.templateKey || r.templateName || '—'
+      if (!map.has(key)) {
+        map.set(key, {
+          label: (tplMap[r.templateKey] && tplMap[r.templateKey].name) || r.templateName || key,
+          key,
+          rows: [],
+        })
+      }
+      map.get(key).rows.push(r)
+    }
+    return [...map.values()].map((g) => ({
+      label: g.label,
+      key: g.key,
+      mapped: Boolean(tplMap[g.key]),
+      ...sumRows(g.rows),
+    }))
+  }, [current, tplMap])
+
+  const meaningful = templateGroups.filter((g) => g.delivered >= 100)
+  const ranked = meaningful.length ? meaningful : templateGroups.filter((g) => g.delivered > 0)
+  const topOpen = [...ranked].sort(
+    (a, b) => pctNum(b.uniqueOpens, b.delivered) - pctNum(a.uniqueOpens, a.delivered),
+  )[0]
+  const topCtr = [...ranked].sort(
+    (a, b) => pctNum(b.uniqueClicks, b.delivered) - pctNum(a.uniqueClicks, a.delivered),
+  )[0]
+  const mostUsed = [...templateGroups].sort((a, b) => b.sent - a.sent)[0]
+  const overall = sumRows(current)
+  const openBenchmark = pctNum(overall.uniqueOpens, overall.delivered)
+  const underperformer = [...ranked]
+    .filter((g) => g.sent >= Math.max(100, (mostUsed?.sent || 0) * 0.2))
+    .sort(
+      (a, b) =>
+        pctNum(a.uniqueOpens, a.delivered) - pctNum(b.uniqueOpens, b.delivered),
+    )[0]
 
   const titles = {
     theme: 'Theme leaderboard',
     family: 'Family leaderboard',
     template: 'Template leaderboard',
   }
+
   const subs = {
     theme: 'Broad keyword themes · highest volume first',
     family: 'Templates grouped by name prefix · highest volume first',
     template: 'Individual templates · sorted by open rate',
   }
-  return (
-    <Card title={titles[mode]} sub={subs[mode]}>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+
+  const sectionNav = (
+    <div className="analyticsSectionBar no-print">
+      <div>
+        <span>Template workspace</span>
+        <small>Performance, fatigue and reusable library</small>
+      </div>
+      <div className="analyticsSectionSwitch">
         {[
-          ['theme', 'By theme'],
-          ['family', 'By family'],
-          ['template', 'By template'],
-        ].map(([v, l]) => (
+          ['performance', 'Performance'],
+          ['fatigue', 'Fatigue'],
+          ['library', 'Library'],
+        ].map(([value, label]) => (
           <button
-            key={v}
-            onClick={() => setMode(v)}
-            style={{
-              padding: '5px 12px',
-              borderRadius: 7,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              border: `1px solid ${mode === v ? C.blue : C.border}`,
-              background: mode === v ? C.blue : C.white,
-              color: mode === v ? C.white : C.mid,
-            }}
+            type="button"
+            key={value}
+            className={section === value ? 'active' : ''}
+            onClick={() => setSection(value)}
           >
-            {l}
+            {label}
           </button>
         ))}
-        <span style={{ fontSize: 11, color: C.mid, alignSelf: 'center', marginLeft: 'auto' }}>
-          {groups.length} rows
+      </div>
+    </div>
+  )
+
+  if (section === 'fatigue') {
+    return (
+      <>
+        {sectionNav}
+        <TemplateFatigueView current={current} tplMap={tplMap} />
+      </>
+    )
+  }
+
+  if (section === 'library') {
+    return (
+      <>
+        {sectionNav}
+        <TemplateLibrary current={current} tplMap={tplMap} />
+      </>
+    )
+  }
+
+  return (
+    <>
+      {sectionNav}
+      <div className="analyticsIntelHeader">
+        <div>
+          <span className="analyticsIntelEyebrow">CONTENT INTELLIGENCE</span>
+          <h2>Which content actually works?</h2>
+          <p>
+            Compare themes, template families and individual templates while keeping mapping
+            coverage visible.
+          </p>
+        </div>
+        <div className={`analyticsCoveragePill ${coverage < 90 ? 'warning' : ''}`}>
+          <span>Template mapping coverage</span>
+          <strong>{coverage.toFixed(0)}%</strong>
+        </div>
+      </div>
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat
+          label="Best open rate"
+          value={topOpen ? `${pctNum(topOpen.uniqueOpens, topOpen.delivered).toFixed(1)}%` : '—'}
+          detail={topOpen?.label || 'No template data'}
+          tone="green"
+          icon={<EyeIcon />}
+        />
+        <MiniStat
+          label="Best CTR"
+          value={topCtr ? `${pctNum(topCtr.uniqueClicks, topCtr.delivered).toFixed(1)}%` : '—'}
+          detail={topCtr?.label || 'No template data'}
+          tone="purple"
+          icon={<PointerIcon />}
+        />
+        <MiniStat
+          label="Most used"
+          value={mostUsed ? fmt(mostUsed.sent) : '—'}
+          detail={mostUsed?.label || 'No template data'}
+          tone="blue"
+          icon={<SendIcon />}
+        />
+        <MiniStat
+          label="Mapping gaps"
+          value={fmt(unmappedKeys.length)}
+          detail={unmappedKeys.length ? 'Unmapped canonical template keys' : 'All active keys mapped'}
+          tone={unmappedKeys.length ? 'amber' : 'green'}
+          icon={<TemplateIcon />}
+        />
+      </div>
+
+      {(unmappedKeys.length > 0 || (underperformer && pctNum(underperformer.uniqueOpens, underperformer.delivered) < openBenchmark - 5)) && (
+        <div className="analyticsInsightGrid">
+          {unmappedKeys.length > 0 && (
+            <InsightCard
+              tone="amber"
+              icon={<AlertIcon />}
+              title={`${unmappedKeys.length} unmapped template${unmappedKeys.length === 1 ? '' : 's'}`}
+              text={`Reporting can fragment until these keys are mapped: ${unmappedKeys.slice(0, 3).join(', ')}${unmappedKeys.length > 3 ? '…' : ''}`}
+            />
+          )}
+          {underperformer && pctNum(underperformer.uniqueOpens, underperformer.delivered) < openBenchmark - 5 && (
+            <InsightCard
+              tone="red"
+              icon={<TrendIcon />}
+              title="High-volume underperformer"
+              text={`${underperformer.label} is ${Math.abs(pctNum(underperformer.uniqueOpens, underperformer.delivered) - openBenchmark).toFixed(1)}pp below the current open-rate benchmark.`}
+            />
+          )}
+        </div>
+      )}
+
+      <Card title={titles[mode]} sub={subs[mode]}>
+        <div className="analyticsSegmentRow">
+          {[
+            ['theme', 'By theme'],
+            ['family', 'By family'],
+            ['template', 'By template'],
+          ].map(([v, l]) => (
+            <button
+              type="button"
+              key={v}
+              onClick={() => setMode(v)}
+              className={`analyticsSegmentButton ${mode === v ? 'active' : ''}`}
+            >
+              {l}
+            </button>
+          ))}
+          <span className="analyticsSegmentMeta">{groups.length} rows</span>
+        </div>
+        <LeaderTable groups={groups} />
+      </Card>
+    </>
+  )
+}
+
+
+function TemplateFatigueView({ current, tplMap }) {
+  const fatigue = useMemo(() => buildTemplateFatigue(current, tplMap), [current, tplMap])
+  const eligible = fatigue.filter((item) => item.status !== 'insufficient')
+  const flagged = eligible.filter((item) => item.status === 'fatigued' || item.status === 'watch')
+  const fatigued = eligible.filter((item) => item.status === 'fatigued')
+  const stable = eligible.filter((item) => item.status === 'stable')
+  const steepest = [...eligible].sort((a, b) => b.fatigueScore - a.fatigueScore)[0]
+
+  return (
+    <>
+      <div className="analyticsIntelHeader">
+        <div>
+          <span className="analyticsIntelEyebrow">TEMPLATE FATIGUE</span>
+          <h2>Is repeated use reducing engagement?</h2>
+          <p>
+            Each use is a distinct active send day for a canonical template. Recent weighted
+            performance is compared with the preceding uses, so low-volume daily fragments do not
+            distort the signal.
+          </p>
+        </div>
+        <div className={`analyticsCoveragePill ${fatigued.length ? 'warning' : ''}`}>
+          <span>Templates to review</span>
+          <strong>{flagged.length}</strong>
+        </div>
+      </div>
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat label="Fatigue detected" value={fmt(fatigued.length)} detail="Material repeated-use decline" tone={fatigued.length ? 'red' : 'green'} icon={<TrendIcon />} />
+        <MiniStat label="Watch list" value={fmt(flagged.length - fatigued.length)} detail="Early deterioration signal" tone={flagged.length > fatigued.length ? 'amber' : 'green'} icon={<AlertIcon />} />
+        <MiniStat label="Stable templates" value={fmt(stable.length)} detail="No material recent decline" tone="green" icon={<ShieldIcon />} />
+        <MiniStat label="Largest fatigue score" value={steepest ? `${steepest.fatigueScore}/100` : '—'} detail={steepest?.label || 'Not enough repeated sends'} tone={steepest?.status === 'fatigued' ? 'red' : 'blue'} icon={<TemplateIcon />} />
+      </div>
+
+      {flagged.length > 0 && (
+        <div className="analyticsInsightGrid">
+          {flagged.slice(0, 4).map((item) => (
+            <InsightCard
+              key={item.key}
+              tone={item.status === 'fatigued' ? 'red' : 'amber'}
+              icon={<TrendIcon />}
+              title={`${item.label} · ${item.status === 'fatigued' ? 'fatigue detected' : 'watch'}`}
+              text={`${item.useCount} active send days. Recent open rate is ${Math.abs(item.openDelta).toFixed(1)}pp ${item.openDelta < 0 ? 'below' : 'above'} the preceding-use baseline and CTR is ${Math.abs(item.ctrDelta).toFixed(1)}pp ${item.ctrDelta < 0 ? 'below' : 'above'}.`}
+            />
+          ))}
+        </div>
+      )}
+
+      <Card
+        title="Repeated-use trend"
+        sub="Requires at least four active send days · six or more gives the strongest recent-vs-prior comparison"
+      >
+        <div className="analyticsTableWrap">
+          <table className="analyticsDataTable analyticsFatigueTable">
+            <thead>
+              <tr>
+                <th>Template</th>
+                <th>Status</th>
+                <th>Uses</th>
+                <th>Last used</th>
+                <th>Recent open</th>
+                <th>Δ open</th>
+                <th>Recent CTR</th>
+                <th>Δ CTR</th>
+                <th>Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fatigue.length === 0 && <tr><td colSpan={9} className="analyticsTableEmpty">No template activity</td></tr>}
+              {fatigue.map((item) => (
+                <tr key={item.key}>
+                  <td>
+                    <strong>{item.label}</strong>
+                    <span className="analyticsInlineMeta">{item.family}</span>
+                  </td>
+                  <td>
+                    <StatusBadge
+                      label={item.status === 'fatigued' ? 'Fatigued' : item.status === 'watch' ? 'Watch' : item.status === 'stable' ? 'Stable' : 'Need more sends'}
+                      tone={item.status === 'fatigued' ? 'bad' : item.status === 'watch' ? 'warning' : item.status === 'stable' ? 'good' : 'neutral'}
+                    />
+                  </td>
+                  <td>{item.useCount}</td>
+                  <td>{item.lastUsed ? formatShortDate(item.lastUsed) : '—'}</td>
+                  <td>{item.recentOpen != null ? `${item.recentOpen.toFixed(1)}%` : '—'}</td>
+                  <td><MetricDelta value={item.openDelta} /></td>
+                  <td>{item.recentCtr != null ? `${item.recentCtr.toFixed(1)}%` : '—'}</td>
+                  <td><MetricDelta value={item.ctrDelta} /></td>
+                  <td>
+                    <div className="analyticsFatigueSpark">
+                      {item.points.length > 1 ? (
+                        <ResponsiveContainer width="100%" height={42}>
+                          <LineChart data={item.points} margin={{ top: 4, right: 2, left: 2, bottom: 2 }}>
+                            <Line type="monotone" dataKey="open" stroke={C.green} strokeWidth={1.7} dot={false} isAnimationActive={false} />
+                            <Line type="monotone" dataKey="ctr" stroke={C.purple} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : '—'}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div className="analyticsMethodNote">
+        <AlertIcon />
+        <span>
+          Fatigue is a directional signal, not proof of causation. Audience mix, offer strength,
+          seasonality and send timing can also move engagement. Review the flagged templates before
+          deciding to retire or redesign them.
         </span>
       </div>
-      <LeaderTable groups={groups} />
+    </>
+  )
+}
+
+function TemplateLibrary({ current, tplMap }) {
+  const [query, setQuery] = useState('')
+  const [theme, setTheme] = useState('All')
+  const entries = useMemo(() => buildTemplateLibraryEntries(current, tplMap), [current, tplMap])
+  const themes = useMemo(() => [...new Set(entries.map((item) => item.theme))].sort(), [entries])
+  const filtered = entries.filter((item) => {
+    const q = query.trim().toLowerCase()
+    return (theme === 'All' || item.theme === theme) &&
+      (!q || `${item.label} ${item.key} ${item.family} ${item.theme}`.toLowerCase().includes(q))
+  })
+  const active = entries.filter((item) => item.sent > 0).length
+  const mapped = entries.filter((item) => item.mapped).length
+
+  return (
+    <>
+      <div className="analyticsIntelHeader">
+        <div>
+          <span className="analyticsIntelEyebrow">EMAIL TEMPLATE LIBRARY</span>
+          <h2>One searchable view of reusable content</h2>
+          <p>
+            The library combines canonical mappings with the selected-period performance layer. It
+            does not invent screenshots because the current template mapping schema does not store
+            rendered creative assets.
+          </p>
+        </div>
+        <div className="analyticsCoveragePill">
+          <span>Canonical templates</span>
+          <strong>{entries.length}</strong>
+        </div>
+      </div>
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat label="Active in period" value={fmt(active)} detail="Templates with send activity" tone="green" icon={<SendIcon />} />
+        <MiniStat label="Mapped" value={fmt(mapped)} detail={`${entries.length ? ((mapped / entries.length) * 100).toFixed(0) : 100}% library coverage`} tone={mapped === entries.length ? 'green' : 'amber'} icon={<CheckIcon />} />
+        <MiniStat label="Themes" value={fmt(themes.length)} detail="Derived content categories" tone="blue" icon={<TemplateIcon />} />
+        <MiniStat label="Inactive in scope" value={fmt(entries.length - active)} detail="Mapped but no sends in selected period" tone="purple" icon={<ClockIcon />} />
+      </div>
+
+      <div className="analyticsLibraryToolbar no-print">
+        <div className="analyticsLibrarySearch">
+          <SearchIcon />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, key, family or theme…" />
+        </div>
+        <label className="analyticsLibrarySelect">
+          <span>Theme</span>
+          <select value={theme} onChange={(e) => setTheme(e.target.value)}>
+            <option value="All">All themes</option>
+            {themes.map((item) => <option value={item} key={item}>{item}</option>)}
+          </select>
+        </label>
+        <span className="analyticsLibraryCount">{filtered.length} shown</span>
+      </div>
+
+      <div className="analyticsTemplateLibraryGrid">
+        {filtered.length === 0 && <Empty>No templates match the current search.</Empty>}
+        {filtered.map((item) => (
+          <article className="analyticsTemplateLibraryCard" key={item.key}>
+            <div className="analyticsTemplateLibraryVisual">
+              <span>{templateInitials(item.label)}</span>
+              <small>{item.theme}</small>
+            </div>
+            <div className="analyticsTemplateLibraryBody">
+              <div className="analyticsTemplateLibraryTop">
+                <StatusBadge label={item.mapped ? 'Mapped' : 'Unmapped'} tone={item.mapped ? 'good' : 'warning'} />
+                <span>{item.lastUsed ? formatShortDate(item.lastUsed) : 'Not used'}</span>
+              </div>
+              <h3>{item.label}</h3>
+              <p>{item.family}</p>
+              <code>{item.key}</code>
+              <div className="analyticsTemplateLibraryMetrics">
+                <div><span>Sent</span><strong>{fmt(item.sent)}</strong></div>
+                <div><span>Open</span><strong>{item.delivered ? `${item.open.toFixed(1)}%` : '—'}</strong></div>
+                <div><span>CTR</span><strong>{item.delivered ? `${item.ctr.toFixed(1)}%` : '—'}</strong></div>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
+  )
+}
+
+
+function AudienceIntelligence({ current, previous }) {
+  const [mode, setMode] = useState('region')
+
+  const regionGroups = useMemo(() => metricGroups(current, 'region', 'region'), [current])
+  const prevRegions = useMemo(() => new Map(metricGroups(previous, 'region', 'region').map((g) => [g.label, g])), [previous])
+  const languageGroups = useMemo(() => groupByDerived(current, languageOfRow), [current])
+  const prevLanguages = useMemo(() => new Map(groupByDerived(previous, languageOfRow).map((g) => [g.label, g])), [previous])
+
+  const groups = mode === 'region' ? regionGroups : languageGroups
+  const prevMap = mode === 'region' ? prevRegions : prevLanguages
+  const knownLanguages = languageGroups.filter((g) => g.label !== 'Unknown')
+  const languageSent = languageGroups.reduce((n, g) => n + g.sent, 0)
+  const identifiedSent = knownLanguages.reduce((n, g) => n + g.sent, 0)
+  const languageCoverage = languageSent ? (identifiedSent / languageSent) * 100 : 100
+  const benchmark = buildMetricGroupBenchmark(mode === 'language' ? knownLanguages : groups)
+
+  const enriched = groups
+    .map((g) => {
+      const prev = prevMap.get(g.label)
+      return {
+        ...g,
+        openDelta: prev ? g.open - prev.open : null,
+        ctrDelta: prev ? g.ctr - prev.ctr : null,
+      }
+    })
+    .sort((a, b) => b.sent - a.sent)
+
+  const eligible = enriched.filter((g) => g.label !== 'Unknown' && g.delivered >= 100)
+  const bestOpen = [...eligible].sort((a, b) => b.open - a.open)[0]
+  const bestCtr = [...eligible].sort((a, b) => b.ctr - a.ctr)[0]
+  const biggest = [...eligible].sort((a, b) => b.sent - a.sent)[0]
+  const weakest = [...eligible].sort((a, b) => a.open - b.open)[0]
+
+  return (
+    <>
+      <div className="analyticsIntelHeader">
+        <div>
+          <span className="analyticsIntelEyebrow">AUDIENCE INTELLIGENCE</span>
+          <h2>Where is performance coming from?</h2>
+          <p>
+            Compare regions and identifiable languages with medians from the current filtered scope.
+            Language is only classified when the reporting row contains an explicit language signal.
+          </p>
+        </div>
+        <div className="analyticsAudienceMode no-print">
+          <button type="button" className={mode === 'region' ? 'active' : ''} onClick={() => setMode('region')}>Regions</button>
+          <button type="button" className={mode === 'language' ? 'active' : ''} onClick={() => setMode('language')}>Languages</button>
+        </div>
+      </div>
+
+      {mode === 'language' && languageCoverage < 95 && (
+        <div className="analyticsCoverageNotice">
+          <AlertIcon />
+          <div>
+            <strong>{languageCoverage.toFixed(0)}% of send volume has an identifiable language signal</strong>
+            <span>Unknown rows stay visible and are excluded from language benchmarks rather than guessed from region.</span>
+          </div>
+        </div>
+      )}
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat label={`Best ${mode === 'region' ? 'region' : 'language'} · open`} value={bestOpen ? `${bestOpen.open.toFixed(1)}%` : '—'} detail={bestOpen?.label || 'No eligible data'} tone="green" icon={<EyeIcon />} />
+        <MiniStat label={`Best ${mode === 'region' ? 'region' : 'language'} · CTR`} value={bestCtr ? `${bestCtr.ctr.toFixed(1)}%` : '—'} detail={bestCtr?.label || 'No eligible data'} tone="purple" icon={<PointerIcon />} />
+        <MiniStat label="Largest audience" value={biggest ? fmt(biggest.sent) : '—'} detail={biggest?.label || 'No eligible data'} tone="blue" icon={<UsersIcon />} />
+        <MiniStat label="Watchlist" value={weakest ? `${weakest.open.toFixed(1)}%` : '—'} detail={weakest ? `${weakest.label} · lowest open rate` : 'No eligible data'} tone={weakest && weakest.open < benchmark.open - 3 ? 'amber' : 'green'} icon={<AlertIcon />} />
+      </div>
+
+      <Card
+        title={`${mode === 'region' ? 'Region' : 'Language'} intelligence leaderboard`}
+        sub={`Current performance · median benchmark ${benchmark.open.toFixed(1)}% open / ${benchmark.ctr.toFixed(1)}% CTR`}
+      >
+        <div className="analyticsTableWrap">
+          <table className="analyticsDataTable analyticsAudienceTable">
+            <thead>
+              <tr>
+                <th>{mode === 'region' ? 'Region' : 'Language'}</th>
+                <th>Sent</th>
+                <th>Delivery</th>
+                <th>Open</th>
+                <th>vs median</th>
+                <th>vs prev.</th>
+                <th>CTR</th>
+                <th>CTOR</th>
+                <th>Share of clicks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {enriched.length === 0 && <tr><td colSpan={9} className="analyticsTableEmpty">No data</td></tr>}
+              {enriched.map((g) => {
+                const allClicks = enriched.reduce((n, x) => n + x.uniqueClicks, 0)
+                return (
+                  <tr key={g.label} className={g.label === 'Unknown' ? 'analyticsUnknownRow' : ''}>
+                    <td><strong>{g.label}</strong>{g.label === 'Unknown' && <span className="analyticsInlineMeta">unclassified</span>}</td>
+                    <td>{fmt(g.sent)}</td>
+                    <td>{g.delivery.toFixed(1)}%</td>
+                    <td><strong style={{ color: rateColor(g.open) }}>{g.open.toFixed(1)}%</strong></td>
+                    <td><MetricDelta value={g.label === 'Unknown' ? null : g.open - benchmark.open} /></td>
+                    <td><MetricDelta value={g.openDelta} /></td>
+                    <td>{g.ctr.toFixed(1)}%</td>
+                    <td>{g.ctor.toFixed(1)}%</td>
+                    <td>{allClicks ? ((g.uniqueClicks / allClicks) * 100).toFixed(1) : '0.0'}%</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div className="analyticsTwoCol">
+        <Card title="Engagement distribution" sub={`${mode === 'region' ? 'Regions' : 'Languages'} ranked by unique clicks`}>
+          <BreakdownBars data={[...enriched].sort((a, b) => b.uniqueClicks - a.uniqueClicks).slice(0, 8).map((g) => ({ name: g.label, open: +g.open.toFixed(1), ctr: +g.ctr.toFixed(1) }))} />
+        </Card>
+        <Card title="Performance outliers" sub="Groups materially above or below the median benchmark">
+          <div className="analyticsOutlierList">
+            {buildAudienceOutliers(enriched.filter((g) => g.label !== 'Unknown'), benchmark).map((item) => (
+              <div className={`analyticsOutlierItem ${item.tone}`} key={item.label}>
+                <span className="analyticsOutlierDot" />
+                <div><strong>{item.label}</strong><span>{item.text}</span></div>
+              </div>
+            ))}
+            {buildAudienceOutliers(enriched.filter((g) => g.label !== 'Unknown'), benchmark).length === 0 && <Empty>No material outliers detected.</Empty>}
+          </div>
+        </Card>
+      </div>
+    </>
+  )
+}
+
+function IntelligenceFeed({ items }) {
+  return (
+    <Card title="Intelligence feed" sub="Prioritized signals from campaigns, deliverability, audience and data quality" className="analyticsIntelFeedCard">
+      <div className="analyticsIntelFeed">
+        {items.map((item, i) => (
+          <div className={`analyticsIntelFeedItem ${item.severity}`} key={`${item.title}-${i}`}>
+            <div className="analyticsIntelFeedSeverity">{item.severity === 'critical' ? '!' : item.severity === 'warning' ? '!' : '✓'}</div>
+            <div className="analyticsIntelFeedBody">
+              <div className="analyticsIntelFeedMeta"><span>{item.category}</span><small>{item.priority}</small></div>
+              <strong>{item.title}</strong>
+              <p>{item.text}</p>
+              {item.action && <div className="analyticsIntelFeedAction">Recommended: {item.action}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
     </Card>
+  )
+}
+
+function AlertCenter({ current, previous, scopeCurrent, campaigns, tplMap }) {
+  const [rules, setRules] = useState(DEFAULT_ALERT_RULES)
+  const [rulesReady, setRulesReady] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(ALERT_RULES_KEY)
+      if (raw) setRules({ ...DEFAULT_ALERT_RULES, ...JSON.parse(raw) })
+    } catch {}
+    setRulesReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!rulesReady) return
+    try {
+      window.localStorage.setItem(ALERT_RULES_KEY, JSON.stringify(rules))
+      setSaved(true)
+      const id = window.setTimeout(() => setSaved(false), 700)
+      return () => window.clearTimeout(id)
+    } catch {}
+  }, [rules, rulesReady])
+
+  const alerts = buildActiveAlerts({ current, previous, scopeCurrent, campaigns, tplMap, rules })
+  const critical = alerts.filter((a) => a.severity === 'critical').length
+  const warning = alerts.filter((a) => a.severity === 'warning').length
+
+  const update = (key, value) => {
+    const n = Number(value)
+    if (!Number.isFinite(n)) return
+    setRules((prev) => ({ ...prev, [key]: n }))
+  }
+
+  const ruleFields = [
+    ['deliveryMin', 'Minimum delivery rate', '%', 'Alert when delivery drops below this level.'],
+    ['openDropMax', 'Open-rate drop', 'pp', 'Alert when open rate falls by at least this many percentage points vs previous period.'],
+    ['ctrDropMax', 'CTR drop', 'pp', 'Alert when CTR falls by at least this many percentage points vs previous period.'],
+    ['complaintMax', 'Maximum complaint rate', '%', 'Alert when complaint rate reaches this threshold.'],
+    ['bounceMax', 'Maximum bounce rate', '%', 'Alert when combined hard + soft bounce reaches this threshold.'],
+    ['unsubscribeMax', 'Maximum unsubscribe rate', '%', 'Alert when unsubscribe rate reaches this threshold.'],
+    ['dataQualityMin', 'Minimum data quality score', '/100', 'Alert when data-quality score falls below this threshold.'],
+  ]
+
+  return (
+    <>
+      <div className="analyticsIntelHeader">
+        <div>
+          <span className="analyticsIntelEyebrow">ALERT CENTER</span>
+          <h2>Only surface what needs action.</h2>
+          <p>
+            Thresholds are configurable and evaluated against the current filtered reporting scope.
+            Rules are saved in this browser for now; no notification is sent externally yet.
+          </p>
+        </div>
+        <div className={`analyticsAlertCountPill ${critical ? 'critical' : warning ? 'warning' : 'healthy'}`}>
+          <span>Active signals</span>
+          <strong>{alerts.length}</strong>
+          <small>{critical} critical · {warning} warning</small>
+        </div>
+      </div>
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat label="Critical" value={fmt(critical)} detail="Immediate review recommended" tone={critical ? 'red' : 'green'} icon={<AlertIcon />} />
+        <MiniStat label="Warnings" value={fmt(warning)} detail="Monitor or investigate" tone={warning ? 'amber' : 'green'} icon={<BellIcon />} />
+        <MiniStat label="Rules enabled" value={fmt(ruleFields.length)} detail="Current threshold rules" tone="blue" icon={<CheckIcon />} />
+        <MiniStat label="Rule storage" value={saved ? 'Saved' : 'Local'} detail="Saved on this browser" tone="purple" icon={<ShieldIcon />} />
+      </div>
+
+      <Card title="Active alerts" sub="Sorted by severity and impact">
+        {alerts.length ? (
+          <div className="analyticsActiveAlertList">
+            {alerts.map((alert, i) => (
+              <div className={`analyticsActiveAlert ${alert.severity}`} key={`${alert.id}-${i}`}>
+                <div className="analyticsActiveAlertIcon">{alert.severity === 'critical' ? '!' : alert.severity === 'warning' ? '!' : 'i'}</div>
+                <div className="analyticsActiveAlertBody">
+                  <div><span>{alert.category}</span><small>{alert.metric}</small></div>
+                  <strong>{alert.title}</strong>
+                  <p>{alert.text}</p>
+                </div>
+                <div className="analyticsActiveAlertValue">{alert.value}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="analyticsHealthyState"><ShieldIcon /><strong>No active alerts</strong><span>All configured thresholds are currently inside range.</span></div>
+        )}
+      </Card>
+
+      <Card
+        title="Alert rules"
+        sub="Tune thresholds to match your internal operating standards"
+        actions={<button type="button" className="analyticsTextButton no-print" onClick={() => setRules(DEFAULT_ALERT_RULES)}>Reset defaults</button>}
+      >
+        <div className="analyticsAlertRulesGrid">
+          {ruleFields.map(([key, label, suffix, help]) => (
+            <label className="analyticsAlertRule" key={key}>
+              <span>{label}</span>
+              <div className="analyticsAlertRuleInput"><input type="number" step="0.1" value={rules[key]} onChange={(e) => update(key, e.target.value)} /><em>{suffix}</em></div>
+              <small>{help}</small>
+            </label>
+          ))}
+        </div>
+      </Card>
+    </>
   )
 }
 
@@ -692,7 +2163,7 @@ function Channels({ current }) {
   const byChannel = groupBy(current, 'channel', 'channel')
   const bySource = groupBy(current, 'source', 'source')
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+    <div className="analyticsTwoCol">
       <Card title="Email vs Push" sub="Open & click rates by channel">
         <BreakdownBars
           data={byChannel.map((g) => ({
@@ -715,59 +2186,316 @@ function Channels({ current }) {
   )
 }
 
-function Deliverability({ current, agg, complaintRate, bounceRate, weekly }) {
-  const healthAlert = complaintRate > 0.1 || bounceRate > 5
-  const trend = buildDeliverabilityTrend(current, weekly)
+function JourneyAnalytics({ journeys, error, days }) {
+  const [region, setRegion] = useState('All')
+
+  if (journeys === null) {
+    return (
+      <Card title="Journey analytics" sub="Loading journey tracking data…">
+        <Spinner />
+      </Card>
+    )
+  }
+
+  if (error) return <Banner>{error}</Banner>
+
+  const regions = [...new Set(journeys.map((j) => j.region).filter(Boolean))].sort()
+  const anchor = journeys.reduce((max, j) => {
+    const value = new Date(j.journeyStartedAt || j.journeyEndedAt || 0).getTime()
+    return Number.isFinite(value) ? Math.max(max, value) : max
+  }, 0) || Date.now()
+  const cutoff = anchor - days * dayMs
+  const scoped = journeys.filter((j) => {
+    const started = new Date(j.journeyStartedAt || j.journeyEndedAt || 0).getTime()
+    const inRange = !started || !Number.isFinite(started) || started >= cutoff
+    return inRange && (region === 'All' || j.region === region)
+  })
+
+  const total = scoped.length
+  const statusCounts = countValues(scoped, (j) => j.journeyStatus || 'Unknown')
+  const started = scoped.filter((j) => j.journeyStartedAt).length
+  const engagedPath = scoped.filter((j) => j.path1Step || j.path1LastSendAt || j.path1ThankyouSentAt).length
+  const nonEngagedPath = scoped.filter((j) => j.path2Step || j.path2LastSendAt || j.day0SentAt).length
+  const forms = scoped.filter((j) => j.formSubmitted).length
+  const thankyou = scoped.filter((j) => j.path1ThankyouSentAt).length
+  const ended = scoped.filter((j) => j.journeyEndedAt).length
+  const completed = scoped.filter((j) => ['Converted', 'Completed'].includes(j.journeyStatus)).length
+  const durations = scoped
+    .filter((j) => j.journeyStartedAt && j.journeyEndedAt)
+    .map((j) => (new Date(j.journeyEndedAt).getTime() - new Date(j.journeyStartedAt).getTime()) / dayMs)
+    .filter((v) => Number.isFinite(v) && v >= 0)
+  const avgDuration = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null
+
+  const regionGroups = regions.map((name) => {
+    const rows = scoped.filter((j) => j.region === name)
+    const converted = rows.filter((j) => ['Converted', 'Completed'].includes(j.journeyStatus)).length
+    const submitted = rows.filter((j) => j.formSubmitted).length
+    return {
+      label: name,
+      total: rows.length,
+      active: rows.filter((j) => j.journeyStatus === 'Active').length,
+      converted,
+      submitted,
+      conversion: pctNum(converted, rows.length),
+      formRate: pctNum(submitted, rows.length),
+    }
+  }).filter((g) => g.total > 0).sort((a, b) => b.total - a.total)
+
+  const path1Steps = countValues(scoped.filter((j) => j.path1Step), (j) => j.path1Step)
+  const path2Steps = countValues(scoped.filter((j) => j.path2Step), (j) => j.path2Step)
+  const milestones = [
+    ['Tracked records', total, 'All records in scope'],
+    ['Journey started', started, 'Has journeyStartedAt'],
+    ['Engaged path activity', engagedPath, 'Path 1 activity observed'],
+    ['Non-engaged path activity', nonEngagedPath, 'Path 2 activity observed'],
+    ['Form submitted', forms, 'formSubmitted = true'],
+    ['Thank-you sent', thankyou, 'Path 1 thank-you timestamp'],
+    ['Converted / completed', completed, 'Final status is Converted or Completed'],
+  ]
+
   return (
     <>
-      {healthAlert && (
-        <div
-          style={{
-            background: '#fef2f2',
-            border: `1px solid ${C.red}`,
-            borderRadius: 10,
-            padding: '12px 16px',
-            marginBottom: 16,
-            fontSize: 13,
-            color: '#991b1b',
-          }}
-        >
-          ⚠️ <strong>Deliverability alert:</strong>{' '}
-          {complaintRate > 0.1 && (
-            <>Complaint rate {complaintRate.toFixed(3)}% above the 0.1% Gmail/Yahoo threshold. </>
-          )}
-          {bounceRate > 5 && <>Bounce rate {bounceRate.toFixed(1)}% elevated. </>}
+      <div className="analyticsIntelHeader">
+        <div>
+          <span className="analyticsIntelEyebrow">JOURNEY ANALYTICS</span>
+          <h2>How are users progressing through the tracked journey?</h2>
+          <p>
+            This view reads the existing JourneyTracking collection. Milestones are reported as
+            observed signals rather than forced into a strict funnel because Path 1 and Path 2 are
+            parallel journey branches.
+          </p>
+        </div>
+        <label className="analyticsJourneyRegion no-print">
+          <span>Region</span>
+          <select value={region} onChange={(e) => setRegion(e.target.value)}>
+            <option value="All">All journey regions</option>
+            {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat label="Tracked" value={fmt(total)} detail={`Last ${days} days by journey start`} tone="blue" icon={<UsersIcon />} />
+        <MiniStat label="Form submissions" value={fmt(forms)} detail={`${pctNum(forms, total).toFixed(1)}% of tracked`} tone="green" icon={<CheckIcon />} />
+        <MiniStat label="Converted / completed" value={fmt(completed)} detail={`${pctNum(completed, total).toFixed(1)}% of tracked`} tone="purple" icon={<TargetIcon />} />
+        <MiniStat label="Avg. journey duration" value={avgDuration == null ? '—' : `${avgDuration.toFixed(1)}d`} detail={`${durations.length} ended journeys with duration`} tone="amber" icon={<ClockIcon />} />
+      </div>
+
+      <Card title="Journey status" sub="Current status distribution inside the selected journey scope">
+        <div className="analyticsJourneyStatusGrid">
+          {['Active', 'Converted', 'Completed', 'Excluded', 'Unknown'].map((status) => {
+            const value = statusCounts.get(status) || 0
+            if (!value && status === 'Unknown') return null
+            return (
+              <div className={`analyticsJourneyStatus status-${status.toLowerCase()}`} key={status}>
+                <span>{status}</span>
+                <strong>{fmt(value)}</strong>
+                <small>{pctNum(value, total).toFixed(1)}%</small>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+
+      <Card title="Observed journey milestones" sub="Parallel branch signals · percentages are relative to tracked records, not assumed sequential conversion">
+        <div className="analyticsJourneyMilestones">
+          {milestones.map(([label, value, detail]) => (
+            <div className="analyticsJourneyMilestone" key={label}>
+              <div className="analyticsJourneyMilestoneTop">
+                <div><strong>{label}</strong><span>{detail}</span></div>
+                <div><b>{fmt(value)}</b><small>{pctNum(value, total).toFixed(1)}%</small></div>
+              </div>
+              <div className="analyticsJourneyTrack"><span style={{ width: `${Math.min(100, pctNum(value, total))}%` }} /></div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div className="analyticsTwoCol">
+        <Card title="Engaged path steps" sub="Current Path 1 step values in JourneyTracking">
+          <JourneyStepList counts={path1Steps} total={engagedPath} />
+        </Card>
+        <Card title="Non-engaged path steps" sub="Current Path 2 step values in JourneyTracking">
+          <JourneyStepList counts={path2Steps} total={nonEngagedPath} />
+        </Card>
+      </div>
+
+      <Card title="Regional journey performance" sub="Tracked records, form submissions and final Converted/Completed status by journey region">
+        <div className="analyticsTableWrap">
+          <table className="analyticsDataTable">
+            <thead><tr><th>Region</th><th>Tracked</th><th>Active</th><th>Forms</th><th>Form rate</th><th>Converted / completed</th><th>Final rate</th></tr></thead>
+            <tbody>
+              {regionGroups.length === 0 && <tr><td colSpan={7} className="analyticsTableEmpty">No journey data in scope</td></tr>}
+              {regionGroups.map((g) => (
+                <tr key={g.label}>
+                  <td><strong>{g.label}</strong></td>
+                  <td>{fmt(g.total)}</td>
+                  <td>{fmt(g.active)}</td>
+                  <td>{fmt(g.submitted)}</td>
+                  <td>{g.formRate.toFixed(1)}%</td>
+                  <td>{fmt(g.converted)}</td>
+                  <td><strong style={{ color: rateColor(g.conversion) }}>{g.conversion.toFixed(1)}%</strong></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div className="analyticsMethodNote">
+        <AlertIcon />
+        <span>
+          Journey status and milestone fields come directly from JourneyTracking. This dashboard does
+          not infer missing steps or assume that a form submission is required for every completion.
+        </span>
+      </div>
+    </>
+  )
+}
+
+function JourneyStepList({ counts, total }) {
+  const rows = [...counts.entries()].sort((a, b) => b[1] - a[1])
+  if (!rows.length) return <Empty>No step values recorded.</Empty>
+  return (
+    <div className="analyticsJourneyStepList">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <div><strong>{label}</strong><span>{fmt(value)} · {pctNum(value, total).toFixed(1)}%</span></div>
+          <div className="analyticsJourneyTrack"><span style={{ width: `${Math.min(100, pctNum(value, total))}%` }} /></div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Deliverability({ current, agg, aggPrev, complaintRate, bounceRate, weekly }) {
+  const trend = buildDeliverabilityTrend(current, weekly)
+  const score = buildHealthScore(agg)
+  const prevScore = buildHealthScore(aggPrev)
+  const health = healthLabel(score)
+  const deliveryRate = pctNum(agg.delivered, agg.sent)
+  const unsubRate = pctNum(agg.unsubscribes, agg.delivered)
+  const failedRate = pctNum(agg.failed, agg.sent)
+  const alerts = buildDeliverabilityAlerts(agg)
+  const regions = buildDeliverabilityRegions(current)
+  const scoreDelta = score - prevScore
+
+  return (
+    <>
+      <div className="analyticsHealthHero">
+        <div className={`analyticsHealthScore analyticsHealthScore-${health.tone}`}>
+          <div className="analyticsHealthRing" style={{ '--health': `${score * 3.6}deg` }}>
+            <div>
+              <strong>{score}</strong>
+              <span>/ 100</span>
+            </div>
+          </div>
+          <div className="analyticsHealthScoreCopy">
+            <span>INTERNAL HEALTH SCORE</span>
+            <h2>{health.label}</h2>
+            <p>
+              A directional score built from delivery, bounce, complaint, unsubscribe and failed
+              delivery signals. It is not an inbox-placement score.
+            </p>
+            {Number.isFinite(scoreDelta) && Math.abs(scoreDelta) >= 1 && (
+              <MetricDelta value={scoreDelta} suffix=" pts vs previous period" />
+            )}
+          </div>
+        </div>
+
+        <div className="analyticsHealthDimensions">
+          <HealthDimension
+            label="Delivery rate"
+            value={deliveryRate}
+            target="Target ≥ 98%"
+            good={deliveryRate >= 98}
+            max={100}
+          />
+          <HealthDimension
+            label="Bounce rate"
+            value={bounceRate}
+            target="Keep < 5%"
+            good={bounceRate < 5}
+            max={10}
+            inverse
+          />
+          <HealthDimension
+            label="Complaint rate"
+            value={complaintRate}
+            target="Keep < 0.10%"
+            good={complaintRate < 0.1}
+            max={0.25}
+            inverse
+            digits={3}
+          />
+          <HealthDimension
+            label="Unsubscribe rate"
+            value={unsubRate}
+            target="Monitor trend"
+            good={unsubRate < 1}
+            max={3}
+            inverse
+          />
+        </div>
+      </div>
+
+      {alerts.length > 0 ? (
+        <div className="analyticsInsightGrid">
+          {alerts.map((item, i) => (
+            <InsightCard key={`${item.title}-${i}`} {...item} />
+          ))}
+        </div>
+      ) : (
+        <div className="analyticsSuccessBanner">
+          <ShieldIcon />
+          <div>
+            <strong>No high-risk deliverability signals detected</strong>
+            <span>Current filtered data is inside the dashboard's configured warning thresholds.</span>
+          </div>
         </div>
       )}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))',
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
-        <Kpi ico="↩️" label="Hard bounces" val={fmt(agg.hardBounces)} clr={C.red} />
-        <Kpi ico="🌀" label="Soft bounces" val={fmt(agg.softBounces)} clr={C.amber} />
-        <Kpi
-          ico="🚩"
-          label="Complaints"
-          val={fmt(agg.complaints)}
-          clr={complaintRate > 0.1 ? C.red : C.mid}
-          sub={complaintRate.toFixed(3) + '%'}
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat
+          label="Hard bounces"
+          value={fmt(agg.hardBounces)}
+          detail={`${pctNum(agg.hardBounces, agg.sent).toFixed(2)}% of sent`}
+          tone={pctNum(agg.hardBounces, agg.sent) > 2 ? 'red' : 'green'}
+          icon={<BounceIcon />}
         />
-        <Kpi ico="🚫" label="Unsubscribes" val={fmt(agg.unsubscribes)} clr={C.amber} />
+        <MiniStat
+          label="Soft bounces"
+          value={fmt(agg.softBounces)}
+          detail={`${pctNum(agg.softBounces, agg.sent).toFixed(2)}% of sent`}
+          tone={pctNum(agg.softBounces, agg.sent) > 3 ? 'amber' : 'blue'}
+          icon={<BounceIcon />}
+        />
+        <MiniStat
+          label="Complaints"
+          value={fmt(agg.complaints)}
+          detail={`${complaintRate.toFixed(3)}% of delivered`}
+          tone={complaintRate >= 0.1 ? 'red' : 'green'}
+          icon={<FlagIcon />}
+        />
+        <MiniStat
+          label="Failed"
+          value={fmt(agg.failed)}
+          detail={`${failedRate.toFixed(2)}% of sent`}
+          tone={failedRate > 2 ? 'red' : 'blue'}
+          icon={<AlertIcon />}
+        />
       </div>
+
       <Card
         title="Complaints & bounces over time"
-        sub="Watch for upward trends — they hurt sender reputation"
+        sub="Directional reputation signals · watch for sustained upward trends"
       >
-        <ResponsiveContainer width="100%" height={240}>
+        <ResponsiveContainer width="100%" height={250}>
           <LineChart data={trend} margin={{ top: 6, right: 12, left: -8, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
             <XAxis dataKey="d" tick={{ fontSize: 11, fill: C.mid }} />
             <YAxis tick={{ fontSize: 11, fill: C.mid }} />
-            <Tooltip />
+            <Tooltip content={<AnalyticsTooltip />} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line
               type="monotone"
@@ -788,9 +2516,163 @@ function Deliverability({ current, agg, complaintRate, bounceRate, weekly }) {
           </LineChart>
         </ResponsiveContainer>
       </Card>
-      <Card title="By region" sub="Volume & engagement · watch complaint columns">
-        <LeaderTable groups={groupBy(current, 'region', 'region')} nameKey />
+
+      <Card
+        title="Regional health"
+        sub="Sorted by internal health score · use this to locate where risk is concentrated"
+      >
+        <div className="analyticsTableWrap">
+          <table className="analyticsDataTable">
+            <thead>
+              <tr>
+                <th>Region</th>
+                <th>Health</th>
+                <th>Sent</th>
+                <th>Delivery</th>
+                <th>Bounce</th>
+                <th>Complaints</th>
+                <th>Unsub</th>
+              </tr>
+            </thead>
+            <tbody>
+              {regions.length === 0 && (
+                <tr><td colSpan={7} className="analyticsTableEmpty">No data</td></tr>
+              )}
+              {regions.map((r) => {
+                const h = healthLabel(r.score)
+                return (
+                  <tr key={r.label}>
+                    <td><strong>{r.label}</strong></td>
+                    <td><StatusBadge label={`${r.score}/100 · ${h.label}`} tone={h.tone} /></td>
+                    <td>{fmt(r.sent)}</td>
+                    <td>{r.delivery.toFixed(1)}%</td>
+                    <td className={r.bounce >= 5 ? 'analyticsRiskText' : ''}>{r.bounce.toFixed(2)}%</td>
+                    <td className={r.complaints >= 0.1 ? 'analyticsRiskText' : ''}>{r.complaints.toFixed(3)}%</td>
+                    <td>{r.unsub.toFixed(2)}%</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </Card>
+    </>
+  )
+}
+
+function DataQuality({ current, tplMap, campaigns }) {
+  const report = useMemo(
+    () => analyzeDataQuality(current, tplMap, campaigns),
+    [current, tplMap, campaigns],
+  )
+  const health = dataQualityLabel(report.score)
+
+  return (
+    <>
+      <div className="analyticsQualityHero">
+        <div>
+          <span className="analyticsIntelEyebrow">DATA QUALITY CENTER</span>
+          <h2>Can you trust the reporting layer?</h2>
+          <p>
+            These checks validate mapping coverage and basic rollup integrity inside the current
+            filters. They flag reporting problems before they become misleading insights.
+          </p>
+        </div>
+        <div className={`analyticsQualityScore analyticsQualityScore-${health.tone}`}>
+          <strong>{report.score}</strong>
+          <div>
+            <span>QUALITY SCORE</span>
+            <b>{health.label}</b>
+          </div>
+        </div>
+      </div>
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat
+          label="Rows checked"
+          value={fmt(current.length)}
+          detail="Daily rollup rows in current filters"
+          tone="blue"
+          icon={<CheckIcon />}
+        />
+        <MiniStat
+          label="Mapped templates"
+          value={`${report.mappingCoverage.toFixed(0)}%`}
+          detail={`${report.mappedKeys} of ${report.templateKeys} canonical keys`}
+          tone={report.mappingCoverage >= 95 ? 'green' : 'amber'}
+          icon={<TemplateIcon />}
+        />
+        <MiniStat
+          label="Integrity errors"
+          value={fmt(report.integrityCount)}
+          detail="Impossible or contradictory metric relationships"
+          tone={report.integrityCount ? 'red' : 'green'}
+          icon={<AlertIcon />}
+        />
+        <MiniStat
+          label="Duplicate dimensions"
+          value={fmt(report.duplicateCount)}
+          detail="Repeated date/channel/source/template/region rows"
+          tone={report.duplicateCount ? 'amber' : 'green'}
+          icon={<DataQualityIcon />}
+        />
+      </div>
+
+      {report.issues.length === 0 ? (
+        <div className="analyticsSuccessBanner">
+          <CheckIcon />
+          <div>
+            <strong>No data-quality issues detected</strong>
+            <span>The selected rollup data passed all currently configured checks.</span>
+          </div>
+        </div>
+      ) : (
+        <div className="analyticsQualityIssueGrid">
+          {report.issues.map((issue) => (
+            <div className={`analyticsQualityIssue analyticsQualityIssue-${issue.tone}`} key={issue.id}>
+              <div className="analyticsQualityIssueIcon">
+                {issue.tone === 'red' ? <AlertIcon /> : issue.tone === 'amber' ? <FlagIcon /> : <CheckIcon />}
+              </div>
+              <div className="analyticsQualityIssueCopy">
+                <div className="analyticsQualityIssueTop">
+                  <strong>{issue.title}</strong>
+                  <span>{fmt(issue.count)}</span>
+                </div>
+                <p>{issue.text}</p>
+                {issue.samples?.length > 0 && (
+                  <div className="analyticsIssueSamples">
+                    {issue.samples.slice(0, 5).map((sample) => (
+                      <code key={sample}>{sample}</code>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="analyticsTwoCol analyticsQualityDetails">
+        <Card title="Unmapped template keys" sub="Keys present in reporting but missing from Template Mappings">
+          {report.unmappedKeys.length ? (
+            <div className="analyticsKeyList">
+              {report.unmappedKeys.map((key) => <code key={key}>{key}</code>)}
+            </div>
+          ) : (
+            <div className="analyticsQualityClean"><CheckIcon /> All active template keys are mapped.</div>
+          )}
+        </Card>
+
+        <Card title="Campaign coverage" sub="Assigned campaign templates with no data in the selected period">
+          {report.orphanCampaignKeys.length ? (
+            <div className="analyticsKeyList">
+              {report.orphanCampaignKeys.slice(0, 20).map((key) => <code key={key}>{key}</code>)}
+            </div>
+          ) : (
+            <div className="analyticsQualityClean"><CheckIcon /> All assigned campaign keys have data in this period.</div>
+          )}
+        </Card>
+      </div>
     </>
   )
 }
@@ -813,6 +2695,592 @@ function sumRows(list) {
   for (const r of list) for (const x of k) out[x] += r[x] || 0
   return out
 }
+function metricsFromAgg(a) {
+  return {
+    open: pctNum(a.uniqueOpens, a.delivered),
+    ctr: pctNum(a.uniqueClicks, a.delivered),
+    ctor: pctNum(a.uniqueClicks, a.uniqueOpens),
+    delivery: pctNum(a.delivered, a.sent),
+    complaints: pctNum(a.complaints, a.delivered),
+    bounce: pctNum((a.hardBounces || 0) + (a.softBounces || 0), a.sent),
+    unsub: pctNum(a.unsubscribes, a.delivered),
+    failedRate: pctNum(a.failed, a.sent),
+  }
+}
+
+function metricGroups(list, key, labelKey) {
+  return groupBy(list, key, labelKey).map((g) => ({ ...g, ...metricsFromAgg(g) }))
+}
+
+function buildCampaignGroups(list, campaigns) {
+  return campaigns.map((c) => {
+    const keys = new Set(c.keys)
+    const rows = list.filter((r) => keys.has(r.templateKey))
+    const agg = sumRows(rows)
+    return {
+      id: c.id,
+      label: c.name,
+      color: c.color,
+      keys: c.keys,
+      templateCount: c.keys.length,
+      rows,
+      ...agg,
+    }
+  })
+}
+
+function enrichCampaignGroups(groups, prevByName = new Map(), benchmarkOverride = null) {
+  const populated = groups.filter((g) => g.sent > 0)
+  const provisional = populated.map((g) => {
+    const prev = prevByName.get(g.label) || sumRows([])
+    const prevMetrics = metricsFromAgg(prev)
+    const metrics = metricsFromAgg(g)
+    return {
+      ...g,
+      ...metrics,
+      openDelta: metrics.open - prevMetrics.open,
+      ctrDelta: metrics.ctr - prevMetrics.ctr,
+      prevMetrics,
+    }
+  })
+  const benchmark = benchmarkOverride || buildCampaignBenchmark(provisional)
+  return provisional
+    .map((g) => ({
+      ...g,
+      status: campaignStatus({ ...g, benchmark }),
+    }))
+    .sort((a, b) => b.open - a.open)
+}
+
+function quantile(values, q) {
+  const arr = values.filter(Number.isFinite).sort((a, b) => a - b)
+  if (!arr.length) return 0
+  if (arr.length === 1) return arr[0]
+  const pos = (arr.length - 1) * q
+  const base = Math.floor(pos)
+  const rest = pos - base
+  return arr[base + 1] !== undefined ? arr[base] + rest * (arr[base + 1] - arr[base]) : arr[base]
+}
+
+function metricStats(values) {
+  const clean = values.filter(Number.isFinite)
+  const q1 = quantile(clean, 0.25)
+  const median = quantile(clean, 0.5)
+  const q3 = quantile(clean, 0.75)
+  const scaleMax = Math.max(q3 * 1.3, median * 1.4, 1)
+  return {
+    q1,
+    median,
+    q3,
+    iqr: q3 - q1,
+    q1Pct: Math.max(0, Math.min(100, (q1 / scaleMax) * 100)),
+    medianPct: Math.max(0, Math.min(100, (median / scaleMax) * 100)),
+    q3Pct: Math.max(0, Math.min(100, (q3 / scaleMax) * 100)),
+  }
+}
+
+function buildCampaignBenchmark(groups) {
+  const eligible = groups.filter((g) => g && g.delivered >= 100 && g.sent > 0)
+  const source = eligible.length ? eligible : groups.filter((g) => g && g.sent > 0)
+  const openStats = metricStats(source.map((g) => g.open ?? pctNum(g.uniqueOpens, g.delivered)))
+  const ctrStats = metricStats(source.map((g) => g.ctr ?? pctNum(g.uniqueClicks, g.delivered)))
+  const ctorStats = metricStats(source.map((g) => g.ctor ?? pctNum(g.uniqueClicks, g.uniqueOpens)))
+  const deliveryStats = metricStats(source.map((g) => g.delivery ?? pctNum(g.delivered, g.sent)))
+  const bounceStats = metricStats(source.map((g) => g.bounce ?? pctNum((g.hardBounces || 0) + (g.softBounces || 0), g.sent)))
+  const complaintStats = metricStats(source.map((g) => g.complaints ?? pctNum(g.complaints, g.delivered)))
+  return {
+    count: source.length,
+    open: openStats.median,
+    ctr: ctrStats.median,
+    ctor: ctorStats.median,
+    delivery: deliveryStats.median,
+    bounce: bounceStats.median,
+    complaints: complaintStats.median,
+    openStats,
+    ctrStats,
+    ctorStats,
+    deliveryStats,
+    bounceStats,
+    complaintStats,
+  }
+}
+
+function campaignStatus({ open, ctr, delivery, complaints, bounce, benchmark }) {
+  if (complaints >= 0.1 || bounce >= 5 || delivery < 95) {
+    return { label: 'Risk', tone: 'bad' }
+  }
+
+  const openBand = Math.max(2, (benchmark?.openStats?.iqr || 0) * 0.75)
+  const ctrBand = Math.max(0.8, (benchmark?.ctrStats?.iqr || 0) * 0.75)
+  const openBase = benchmark?.open || 0
+  const ctrBase = benchmark?.ctr || 0
+
+  if (open < openBase - openBand || ctr < ctrBase - ctrBand) {
+    return { label: 'Underperforming', tone: 'warning' }
+  }
+  if (open > openBase + openBand || ctr > ctrBase + ctrBand) {
+    return { label: 'Strong', tone: 'good' }
+  }
+  return { label: 'On benchmark', tone: 'neutral' }
+}
+
+function buildCampaignIntelligence(groups, benchmark) {
+  const out = []
+  if (!groups.length) return out
+
+  const strongest = [...groups].sort((a, b) => b.open - a.open)[0]
+  const strongThreshold = Math.max(2, (benchmark.openStats?.iqr || 0) * 0.6)
+  if (strongest && strongest.open >= benchmark.open + strongThreshold) {
+    out.push({
+      tone: 'green',
+      icon: <SparkleIcon />,
+      title: `${strongest.label} is leading engagement`,
+      text: `${strongest.open.toFixed(1)}% open rate, ${Math.abs(strongest.open - benchmark.open).toFixed(1)}pp above the comparable-campaign median.`,
+    })
+  }
+
+  const falling = [...groups]
+    .filter((g) => g.openDelta <= -3)
+    .sort((a, b) => a.openDelta - b.openDelta)[0]
+  if (falling) {
+    out.push({
+      tone: 'red',
+      icon: <TrendIcon />,
+      title: `${falling.label} lost momentum`,
+      text: `Open rate is down ${Math.abs(falling.openDelta).toFixed(1)}pp versus the previous comparable period.`,
+    })
+  }
+
+  const risky = groups.find((g) => g.complaints >= 0.1 || g.bounce >= 5 || g.delivery < 95)
+  if (risky) {
+    const reason = risky.complaints >= 0.1
+      ? `${risky.complaints.toFixed(3)}% complaints`
+      : risky.bounce >= 5
+        ? `${risky.bounce.toFixed(1)}% bounce rate`
+        : `${risky.delivery.toFixed(1)}% delivery rate`
+    out.push({
+      tone: 'amber',
+      icon: <AlertIcon />,
+      title: `${risky.label} needs a deliverability check`,
+      text: `${reason} is outside the dashboard's configured healthy range.`,
+    })
+  }
+
+  const efficient = [...groups]
+    .filter((g) => g.open > 0)
+    .sort((a, b) => b.ctor - a.ctor)[0]
+  if (efficient && efficient.ctor >= Math.max(15, benchmark.ctor + 2)) {
+    out.push({
+      tone: 'purple',
+      icon: <TargetIcon />,
+      title: `${efficient.label} converts opens well`,
+      text: `${efficient.ctor.toFixed(1)}% CTOR is ${(efficient.ctor - benchmark.ctor).toFixed(1)}pp above the comparable-campaign median.`,
+    })
+  }
+
+  return out.slice(0, 4)
+}
+
+function campaignPerformanceScore(metrics, benchmark) {
+  const relative = (value, base, scale) => base ? (value - base) / scale : 0
+  let score = 75
+  score += Math.max(-14, Math.min(14, relative(metrics.open, benchmark.open, 2.5) * 4))
+  score += Math.max(-12, Math.min(12, relative(metrics.ctr, benchmark.ctr, 1.2) * 4))
+  score += Math.max(-8, Math.min(8, relative(metrics.ctor, benchmark.ctor, 2) * 2))
+  score += Math.max(-8, Math.min(8, relative(metrics.delivery, benchmark.delivery, 1.2) * 2))
+  if (metrics.complaints >= 0.1) score -= 12
+  if (metrics.bounce >= 5) score -= 10
+  return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+function buildCampaign360Insights(name, metrics, prev, benchmark, regions, templates) {
+  const out = []
+  const openDelta = metrics.open - prev.open
+  const ctrDelta = metrics.ctr - prev.ctr
+  if (prev.open > 0 && Math.abs(openDelta) >= 2) {
+    out.push({ tone: openDelta > 0 ? 'green' : 'red', icon: <EyeIcon />, title: `${name} ${openDelta > 0 ? 'gained' : 'lost'} open-rate momentum`, text: `${Math.abs(openDelta).toFixed(1)}pp ${openDelta > 0 ? 'above' : 'below'} the previous comparable period.` })
+  }
+  if (prev.ctr > 0 && Math.abs(ctrDelta) >= 1) {
+    out.push({ tone: ctrDelta > 0 ? 'purple' : 'amber', icon: <PointerIcon />, title: `CTR ${ctrDelta > 0 ? 'improved' : 'declined'}`, text: `${metrics.ctr.toFixed(1)}% CTR, ${Math.abs(ctrDelta).toFixed(1)}pp ${ctrDelta > 0 ? 'up' : 'down'} versus the previous period.` })
+  }
+  const bestRegion = [...regions].filter((g) => g.delivered >= 100).sort((a, b) => b.ctr - a.ctr)[0]
+  if (bestRegion) out.push({ tone: 'blue', icon: <GlobeIcon />, title: `${bestRegion.label} drives the strongest regional CTR`, text: `${bestRegion.ctr.toFixed(1)}% CTR and ${fmt(bestRegion.uniqueClicks)} unique clicks in the current scope.` })
+  const topTemplate = [...templates].filter((g) => g.delivered >= 100).sort((a, b) => b.uniqueClicks - a.uniqueClicks)[0]
+  if (topTemplate) out.push({ tone: 'green', icon: <TemplateIcon />, title: `${topTemplate.label} contributes the most clicks`, text: `${fmt(topTemplate.uniqueClicks)} unique clicks at ${topTemplate.ctr.toFixed(1)}% CTR.` })
+  if (metrics.open < benchmark.open - Math.max(2, benchmark.openStats?.iqr || 0)) out.push({ tone: 'amber', icon: <AlertIcon />, title: 'Open rate is below the peer cohort', text: `${metrics.open.toFixed(1)}% versus a ${benchmark.open.toFixed(1)}% peer median.` })
+  return out.slice(0, 4)
+}
+
+function buildHealthScore(agg) {
+  if (!agg || !agg.sent) return 100
+  const delivery = pctNum(agg.delivered, agg.sent)
+  const bounce = pctNum(agg.hardBounces + agg.softBounces, agg.sent)
+  const complaints = pctNum(agg.complaints, agg.delivered)
+  const unsub = pctNum(agg.unsubscribes, agg.delivered)
+  const failed = pctNum(agg.failed, agg.sent)
+
+  let penalty = 0
+  penalty += Math.min(28, Math.max(0, 98 - delivery) * 2.5)
+  penalty += Math.min(24, bounce * 4.2)
+  penalty += Math.min(22, complaints * 135)
+  penalty += Math.min(14, unsub * 7)
+  penalty += Math.min(12, failed * 2.5)
+
+  return Math.max(0, Math.min(100, Math.round(100 - penalty)))
+}
+
+function healthLabel(score) {
+  if (score >= 90) return { label: 'Healthy', tone: 'good' }
+  if (score >= 75) return { label: 'Watch', tone: 'warning' }
+  return { label: 'At risk', tone: 'bad' }
+}
+
+function buildDeliverabilityAlerts(agg) {
+  const out = []
+  if (!agg?.sent) return out
+
+  const delivery = pctNum(agg.delivered, agg.sent)
+  const bounce = pctNum(agg.hardBounces + agg.softBounces, agg.sent)
+  const complaints = pctNum(agg.complaints, agg.delivered)
+  const failed = pctNum(agg.failed, agg.sent)
+  const unsub = pctNum(agg.unsubscribes, agg.delivered)
+
+  if (complaints >= 0.1) {
+    out.push({
+      tone: 'red',
+      icon: <FlagIcon />,
+      title: 'Complaint rate is elevated',
+      text: `${complaints.toFixed(3)}% of delivered messages generated complaints. Investigate the campaigns, audience source and frequency behind the spike.`,
+    })
+  }
+  if (bounce >= 5) {
+    out.push({
+      tone: 'red',
+      icon: <BounceIcon />,
+      title: 'Bounce rate needs attention',
+      text: `${bounce.toFixed(1)}% of sent messages bounced. Segment hard versus soft bounces before the next large send.`,
+    })
+  }
+  if (delivery < 95) {
+    out.push({
+      tone: 'amber',
+      icon: <MailIcon />,
+      title: 'Delivery rate is below the dashboard target',
+      text: `${delivery.toFixed(1)}% delivered. Check whether the drop is concentrated in a source, region or campaign.`,
+    })
+  }
+  if (failed > 2) {
+    out.push({
+      tone: 'amber',
+      icon: <AlertIcon />,
+      title: 'Failed delivery volume is elevated',
+      text: `${failed.toFixed(1)}% of sends are marked failed in the current dataset.`,
+    })
+  }
+  if (unsub > 1.5) {
+    out.push({
+      tone: 'amber',
+      icon: <BanIcon />,
+      title: 'Unsubscribe rate is rising',
+      text: `${unsub.toFixed(2)}% of delivered messages generated unsubscribes. Review relevance and frequency.`,
+    })
+  }
+
+  return out.slice(0, 4)
+}
+
+function buildDeliverabilityRegions(list) {
+  return groupBy(list, 'region', 'region')
+    .map((g) => ({
+      ...g,
+      score: buildHealthScore(g),
+      delivery: pctNum(g.delivered, g.sent),
+      bounce: pctNum(g.hardBounces + g.softBounces, g.sent),
+      complaints: pctNum(g.complaints, g.delivered),
+      unsub: pctNum(g.unsubscribes, g.delivered),
+    }))
+    .sort((a, b) => a.score - b.score)
+}
+
+function analyzeDataQuality(rows, tplMap, campaigns) {
+  const templateKeys = [...new Set(rows.map((r) => r.templateKey).filter(Boolean))]
+  const unmappedKeys = templateKeys.filter((key) => !tplMap[key]).sort()
+  const mappedKeys = templateKeys.length - unmappedKeys.length
+  const mappingCoverage = templateKeys.length ? (mappedKeys / templateKeys.length) * 100 : 100
+
+  const missingTemplateRows = rows.filter((r) => !r.templateKey && !r.templateName)
+  const missingRegionRows = rows.filter((r) => !r.region || r.region === '—')
+  const zeroSentWithActivity = rows.filter(
+    (r) =>
+      (r.sent || 0) === 0 &&
+      ((r.delivered || 0) > 0 || (r.uniqueOpens || 0) > 0 || (r.uniqueClicks || 0) > 0),
+  )
+
+  const integrityRows = rows.filter((r) => {
+    const sent = r.sent || 0
+    const delivered = r.delivered || 0
+    const opens = r.uniqueOpens || 0
+    const totalOpens = r.totalOpens || 0
+    const clicks = r.uniqueClicks || 0
+    const totalClicks = r.totalClicks || 0
+    const bounces = (r.hardBounces || 0) + (r.softBounces || 0)
+    return (
+      delivered > sent ||
+      opens > delivered ||
+      clicks > delivered ||
+      totalOpens < opens ||
+      totalClicks < clicks ||
+      bounces > sent ||
+      (r.complaints || 0) > delivered ||
+      (r.unsubscribes || 0) > delivered
+    )
+  })
+
+  const dimensionMap = new Map()
+  for (const r of rows) {
+    const key = [
+      String(r.date || '').slice(0, 10),
+      r.channel || '',
+      r.source || '',
+      r.templateKey || r.templateName || '',
+      r.region || '',
+    ].join('|')
+    dimensionMap.set(key, (dimensionMap.get(key) || 0) + 1)
+  }
+  const duplicateKeys = [...dimensionMap.entries()].filter(([, count]) => count > 1)
+  const duplicateCount = duplicateKeys.reduce((sum, [, count]) => sum + (count - 1), 0)
+
+  const activeKeys = new Set(templateKeys)
+  const orphanCampaignKeys = [...new Set(
+    campaigns.flatMap((c) => c.keys || []).filter((key) => key && !activeKeys.has(key)),
+  )].sort()
+
+  const issues = []
+  if (unmappedKeys.length) {
+    issues.push({
+      id: 'unmapped',
+      tone: mappingCoverage < 80 ? 'red' : 'amber',
+      title: 'Unmapped template keys',
+      count: unmappedKeys.length,
+      text: 'These canonical keys exist in analytics rows but have no Template Mapping, which can fragment template and family reporting.',
+      samples: unmappedKeys,
+    })
+  }
+  if (missingTemplateRows.length) {
+    issues.push({
+      id: 'missing-template',
+      tone: 'red',
+      title: 'Rows without template identity',
+      count: missingTemplateRows.length,
+      text: 'Rows without both a template key and template name cannot be attributed reliably.',
+      samples: missingTemplateRows.map((r) => String(r.date || '').slice(0, 10)),
+    })
+  }
+  if (missingRegionRows.length) {
+    issues.push({
+      id: 'missing-region',
+      tone: 'amber',
+      title: 'Missing region values',
+      count: missingRegionRows.length,
+      text: 'Regional breakdowns will exclude or bucket these rows under an unknown value.',
+      samples: missingRegionRows.map((r) => r.templateKey || r.templateName || 'unknown template'),
+    })
+  }
+  if (integrityRows.length) {
+    issues.push({
+      id: 'integrity',
+      tone: 'red',
+      title: 'Metric integrity conflicts',
+      count: integrityRows.length,
+      text: 'One or more rows contain impossible relationships such as delivered > sent, opens > delivered, or total events below unique events.',
+      samples: integrityRows.map((r) => `${String(r.date || '').slice(0, 10)} · ${r.templateKey || r.templateName || 'unknown'}`),
+    })
+  }
+  if (zeroSentWithActivity.length) {
+    issues.push({
+      id: 'zero-sent',
+      tone: 'red',
+      title: 'Activity exists with zero sent',
+      count: zeroSentWithActivity.length,
+      text: 'These rows report delivery or engagement while sent is zero, indicating a rollup or ingestion inconsistency.',
+      samples: zeroSentWithActivity.map((r) => `${String(r.date || '').slice(0, 10)} · ${r.templateKey || r.templateName || 'unknown'}`),
+    })
+  }
+  if (duplicateCount) {
+    issues.push({
+      id: 'duplicates',
+      tone: 'amber',
+      title: 'Duplicate rollup dimensions',
+      count: duplicateCount,
+      text: 'More than one row exists for the same date, channel, source, template and region dimension, which can double-count metrics.',
+      samples: duplicateKeys.map(([key]) => key),
+    })
+  }
+
+  const integrityCount = integrityRows.length + zeroSentWithActivity.length
+  let score = 100
+  score -= Math.min(30, integrityCount * 8)
+  score -= Math.min(20, duplicateCount * 3)
+  score -= Math.min(22, unmappedKeys.length * 4)
+  score -= Math.min(12, missingTemplateRows.length * 4)
+  score -= Math.min(8, missingRegionRows.length * 2)
+  score = Math.max(0, Math.round(score))
+
+  return {
+    score,
+    issues,
+    templateKeys: templateKeys.length,
+    mappedKeys,
+    mappingCoverage,
+    unmappedKeys,
+    orphanCampaignKeys,
+    integrityCount,
+    duplicateCount,
+  }
+}
+
+
+function languageOfRow(row) {
+  if (row?.language) return normalizeLanguage(row.language)
+  if (row?.source === 'onesignal_china') return 'Chinese'
+  const hay = `${row?.templateKey || ''} ${row?.templateName || ''}`.toLowerCase()
+  const hints = [
+    ['Chinese', /(?:^|[\s_-])(zh(?:-hans|-hant)?|cn|tc)(?:$|[\s_-])/i],
+    ['Japanese', /(?:^|[\s_-])(ja|jp)(?:$|[\s_-])|japan|japanese/i],
+    ['Portuguese', /(?:^|[\s_-])(pt|pt-br)(?:$|[\s_-])|portuguese/i],
+    ['Spanish', /(?:^|[\s_-])(es|es-es|es-latam)(?:$|[\s_-])|spanish/i],
+    ['Arabic', /(?:^|[\s_-])(ar)(?:$|[\s_-])|arabic/i],
+    ['German', /(?:^|[\s_-])(de)(?:$|[\s_-])|german/i],
+    ['Italian', /(?:^|[\s_-])(it)(?:$|[\s_-])|italian/i],
+    ['Polish', /(?:^|[\s_-])(pl)(?:$|[\s_-])|polish/i],
+    ['English', /(?:^|[\s_-])(en|en-gb|en-us)(?:$|[\s_-])|english/i],
+  ]
+  for (const [label, re] of hints) if (re.test(hay)) return label
+  return 'Unknown'
+}
+
+function normalizeLanguage(value) {
+  const v = String(value || '').trim().toLowerCase()
+  const map = {
+    en: 'English', english: 'English',
+    es: 'Spanish', spanish: 'Spanish',
+    pt: 'Portuguese', 'pt-br': 'Portuguese', portuguese: 'Portuguese',
+    ar: 'Arabic', arabic: 'Arabic',
+    de: 'German', german: 'German',
+    it: 'Italian', italian: 'Italian',
+    pl: 'Polish', polish: 'Polish',
+    ja: 'Japanese', jp: 'Japanese', japanese: 'Japanese',
+    zh: 'Chinese', cn: 'Chinese', tc: 'Chinese', 'zh-hans': 'Chinese', 'zh-hant': 'Chinese', chinese: 'Chinese',
+  }
+  return map[v] || String(value || 'Unknown')
+}
+
+function groupByDerived(list, derive) {
+  const map = new Map()
+  for (const r of list) {
+    const label = derive(r) || 'Unknown'
+    if (!map.has(label)) map.set(label, [])
+    map.get(label).push(r)
+  }
+  return [...map.entries()].map(([label, rows]) => {
+    const agg = sumRows(rows)
+    return { label, ...agg, ...metricsFromAgg(agg) }
+  })
+}
+
+function buildMetricGroupBenchmark(groups) {
+  const eligible = groups.filter((g) => g && g.delivered >= 100)
+  const source = eligible.length ? eligible : groups
+  return {
+    open: quantile(source.map((g) => g.open), 0.5),
+    ctr: quantile(source.map((g) => g.ctr), 0.5),
+    ctor: quantile(source.map((g) => g.ctor), 0.5),
+    delivery: quantile(source.map((g) => g.delivery), 0.5),
+  }
+}
+
+function buildAudienceOutliers(groups, benchmark) {
+  const out = []
+  for (const g of groups.filter((x) => x.delivered >= 100)) {
+    const openDiff = g.open - benchmark.open
+    const ctrDiff = g.ctr - benchmark.ctr
+    if (openDiff >= 4 || ctrDiff >= 2) {
+      out.push({ label: g.label, tone: 'good', score: Math.max(openDiff / 4, ctrDiff / 2), text: `${openDiff >= 4 ? `${openDiff.toFixed(1)}pp above median open` : `${ctrDiff.toFixed(1)}pp above median CTR`}.` })
+    } else if (openDiff <= -4 || ctrDiff <= -2) {
+      out.push({ label: g.label, tone: 'bad', score: Math.max(Math.abs(openDiff) / 4, Math.abs(ctrDiff) / 2), text: `${openDiff <= -4 ? `${Math.abs(openDiff).toFixed(1)}pp below median open` : `${Math.abs(ctrDiff).toFixed(1)}pp below median CTR`}.` })
+    }
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, 6)
+}
+
+function buildActiveAlerts({ current, previous, scopeCurrent, campaigns, tplMap, rules = DEFAULT_ALERT_RULES }) {
+  const alerts = []
+  const agg = sumRows(current)
+  const prev = sumRows(previous)
+  const m = metricsFromAgg(agg)
+  const pm = metricsFromAgg(prev)
+  const quality = analyzeDataQuality(current, tplMap, campaigns)
+
+  if (agg.sent > 0 && m.delivery < rules.deliveryMin) alerts.push({ id: 'delivery', severity: m.delivery < rules.deliveryMin - 2 ? 'critical' : 'warning', category: 'Deliverability', metric: 'Delivery rate', title: 'Delivery rate below threshold', text: `Current delivery is ${m.delivery.toFixed(1)}%, below the configured ${rules.deliveryMin.toFixed(1)}% minimum.`, value: `${m.delivery.toFixed(1)}%` })
+  if (pm.open > 0 && m.open <= pm.open - rules.openDropMax) alerts.push({ id: 'open-drop', severity: m.open <= pm.open - rules.openDropMax * 1.7 ? 'critical' : 'warning', category: 'Engagement', metric: 'Open rate', title: 'Open rate declined materially', text: `Open rate is down ${(pm.open - m.open).toFixed(1)}pp versus the previous comparable period.`, value: `-${(pm.open - m.open).toFixed(1)}pp` })
+  if (pm.ctr > 0 && m.ctr <= pm.ctr - rules.ctrDropMax) alerts.push({ id: 'ctr-drop', severity: m.ctr <= pm.ctr - rules.ctrDropMax * 1.7 ? 'critical' : 'warning', category: 'Engagement', metric: 'CTR', title: 'CTR declined materially', text: `CTR is down ${(pm.ctr - m.ctr).toFixed(1)}pp versus the previous comparable period.`, value: `-${(pm.ctr - m.ctr).toFixed(1)}pp` })
+  if (m.complaints >= rules.complaintMax) alerts.push({ id: 'complaints', severity: m.complaints >= rules.complaintMax * 1.5 ? 'critical' : 'warning', category: 'Deliverability', metric: 'Complaints', title: 'Complaint rate above threshold', text: `Complaint rate is ${m.complaints.toFixed(3)}% against a configured maximum of ${rules.complaintMax.toFixed(3)}%.`, value: `${m.complaints.toFixed(3)}%` })
+  if (m.bounce >= rules.bounceMax) alerts.push({ id: 'bounce', severity: m.bounce >= rules.bounceMax * 1.4 ? 'critical' : 'warning', category: 'Deliverability', metric: 'Bounce rate', title: 'Bounce rate above threshold', text: `Combined hard + soft bounce is ${m.bounce.toFixed(1)}%, above the ${rules.bounceMax.toFixed(1)}% maximum.`, value: `${m.bounce.toFixed(1)}%` })
+  if (m.unsub >= rules.unsubscribeMax) alerts.push({ id: 'unsubscribe', severity: m.unsub >= rules.unsubscribeMax * 1.5 ? 'critical' : 'warning', category: 'Audience', metric: 'Unsubscribe', title: 'Unsubscribe rate above threshold', text: `Unsubscribe rate is ${m.unsub.toFixed(2)}%, above the ${rules.unsubscribeMax.toFixed(2)}% maximum.`, value: `${m.unsub.toFixed(2)}%` })
+  if (quality.score < rules.dataQualityMin) alerts.push({ id: 'data-quality', severity: quality.score < rules.dataQualityMin - 15 ? 'critical' : 'warning', category: 'Data quality', metric: 'Quality score', title: 'Data quality is below threshold', text: `${quality.issues.length} issue type${quality.issues.length === 1 ? '' : 's'} detected in the current scope.`, value: `${quality.score}/100` })
+
+  const campaignGroups = enrichCampaignGroups(buildCampaignGroups(scopeCurrent, campaigns))
+  for (const g of campaignGroups.filter((x) => x.status.tone === 'bad').slice(0, 3)) {
+    alerts.push({ id: `campaign-${g.label}`, severity: 'warning', category: 'Campaign', metric: g.status.label, title: `${g.label} needs attention`, text: `${g.delivery.toFixed(1)}% delivery · ${g.bounce.toFixed(1)}% bounce · ${g.complaints.toFixed(3)}% complaints.`, value: g.status.label })
+  }
+
+  const rank = { critical: 0, warning: 1, info: 2 }
+  return alerts.sort((a, b) => rank[a.severity] - rank[b.severity])
+}
+
+function buildIntelligenceFeed({ current, previous, scopeCurrent, scopePrevious, campaigns, tplMap }) {
+  const out = []
+  const agg = sumRows(current)
+  const prev = sumRows(previous)
+  const m = metricsFromAgg(agg)
+  const pm = metricsFromAgg(prev)
+  const campaignGroups = enrichCampaignGroups(buildCampaignGroups(scopeCurrent, campaigns), new Map(buildCampaignGroups(scopePrevious, campaigns).map((g) => [g.label, g])))
+  const benchmark = buildCampaignBenchmark(campaignGroups)
+  const quality = analyzeDataQuality(current, tplMap, campaigns)
+
+  const risk = campaignGroups.find((g) => g.status.tone === 'bad')
+  if (risk) out.push({ severity: 'critical', category: 'CAMPAIGN', priority: 'High priority', title: `${risk.label} is outside healthy operating range`, text: `${risk.delivery.toFixed(1)}% delivery, ${risk.bounce.toFixed(1)}% bounce and ${risk.complaints.toFixed(3)}% complaints.`, action: 'Open Campaigns → 360° and isolate the region/template causing the issue.' })
+
+  if (pm.open > 0 && m.open <= pm.open - 3) out.push({ severity: 'warning', category: 'ENGAGEMENT', priority: 'Watch', title: 'Open rate is losing momentum', text: `${m.open.toFixed(1)}% open rate is ${(pm.open - m.open).toFixed(1)}pp below the previous comparable period.`, action: 'Compare recent campaigns and review subject/template performance.' })
+  if (pm.ctr > 0 && m.ctr <= pm.ctr - 1.5) out.push({ severity: 'warning', category: 'ENGAGEMENT', priority: 'Watch', title: 'Click-through rate declined', text: `${m.ctr.toFixed(1)}% CTR is ${(pm.ctr - m.ctr).toFixed(1)}pp below the previous period.`, action: 'Review CTOR and template contribution to separate content from open-rate effects.' })
+
+  const regions = metricGroups(current, 'region', 'region').filter((g) => g.delivered >= 100)
+  const regionBench = buildMetricGroupBenchmark(regions)
+  const weakRegion = [...regions].sort((a, b) => a.open - b.open)[0]
+  if (weakRegion && weakRegion.open <= regionBench.open - 4) out.push({ severity: 'warning', category: 'AUDIENCE', priority: 'Opportunity', title: `${weakRegion.label} is an audience outlier`, text: `${weakRegion.open.toFixed(1)}% open rate is ${(regionBench.open - weakRegion.open).toFixed(1)}pp below the regional median.`, action: 'Open Audience → Regions and compare channel/template mix.' })
+
+  const templates = metricGroups(current, 'templateKey', 'templateName').filter((g) => g.delivered >= 100)
+  const tplBench = buildMetricGroupBenchmark(templates)
+  const highVolumeWeak = [...templates].filter((g) => g.sent >= quantile(templates.map((x) => x.sent), 0.65) && g.open < tplBench.open - 4).sort((a, b) => b.sent - a.sent)[0]
+  if (highVolumeWeak) out.push({ severity: 'warning', category: 'TEMPLATE', priority: 'Opportunity', title: `${highVolumeWeak.label} is a high-volume underperformer`, text: `${fmt(highVolumeWeak.sent)} sends at ${highVolumeWeak.open.toFixed(1)}% open rate, ${(tplBench.open - highVolumeWeak.open).toFixed(1)}pp below the template median.`, action: 'Review the template or reduce reuse before the next large send.' })
+
+  if (quality.score < 90) out.push({ severity: quality.score < 75 ? 'critical' : 'warning', category: 'DATA QUALITY', priority: 'Foundation', title: `Data quality score is ${quality.score}/100`, text: `${quality.issues.length} issue type${quality.issues.length === 1 ? '' : 's'} can reduce confidence in comparisons and attribution.`, action: 'Open Data Quality and resolve integrity/mapping issues first.' })
+
+  const strong = [...campaignGroups].filter((g) => g.status.tone === 'good').sort((a, b) => (b.open - benchmark.open) + (b.ctr - benchmark.ctr))[0]
+  if (strong) out.push({ severity: 'positive', category: 'OPPORTUNITY', priority: 'Learn', title: `${strong.label} is outperforming its peer cohort`, text: `${strong.open.toFixed(1)}% open and ${strong.ctr.toFixed(1)}% CTR versus ${benchmark.open.toFixed(1)}% / ${benchmark.ctr.toFixed(1)}% medians.`, action: 'Use the 360° view to identify the region and template contribution worth repeating.' })
+
+  if (!out.length) out.push({ severity: 'positive', category: 'SYSTEM', priority: 'Healthy', title: 'No material negative signals detected', text: 'Current engagement, deliverability and data quality are within the dashboard’s actionable ranges.', action: 'Use Campaign Comparison to look for optimization opportunities rather than remediation.' })
+
+  const rank = { critical: 0, warning: 1, positive: 2 }
+  return out.sort((a, b) => rank[a.severity] - rank[b.severity]).slice(0, 6)
+}
+
+function dataQualityLabel(score) {
+  if (score >= 95) return { label: 'Excellent', tone: 'good' }
+  if (score >= 80) return { label: 'Good', tone: 'warning' }
+  return { label: 'Needs attention', tone: 'bad' }
+}
+
 function groupBy(list, key, labelKey) {
   const map = new Map()
   for (const r of list) {
@@ -844,6 +3312,32 @@ function buildTrend(list, weekly) {
   }
   return [...map.values()].sort((a, b) => a.t - b.t)
 }
+function buildKpiTrend(list, weekly) {
+  const map = new Map()
+  for (const r of list) {
+    const base = weekly ? weekKey(r.date) : new Date(r.date)
+    const label = base.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+    if (!map.has(label)) map.set(label, { d: label, rows: [], t: base.getTime() })
+    map.get(label).rows.push(r)
+  }
+  return [...map.values()]
+    .sort((a, b) => a.t - b.t)
+    .map((g) => {
+      const a = sumRows(g.rows)
+      return {
+        d: g.d,
+        sent: a.sent,
+        deliveryRate: pctNum(a.delivered, a.sent),
+        openRate: pctNum(a.uniqueOpens, a.delivered),
+        ctr: pctNum(a.uniqueClicks, a.delivered),
+        ctor: pctNum(a.uniqueClicks, a.uniqueOpens),
+        complaintRate: pctNum(a.complaints, a.delivered),
+        bounceRate: pctNum(a.hardBounces + a.softBounces, a.sent),
+        unsubRate: pctNum(a.unsubscribes, a.delivered),
+      }
+    })
+}
+
 function buildDeliverabilityTrend(list, weekly) {
   const map = new Map()
   for (const r of list) {
@@ -868,6 +3362,65 @@ function relDelta(now, prev) {
   if (Math.abs(diff) < 0.5) return { txt: '≈', up: null }
   return { txt: (diff > 0 ? '+' : '') + diff.toFixed(0) + '%', up: diff > 0 }
 }
+function buildOverviewIntelligence(agg, aggPrev, current) {
+  const out = []
+  const open = pctNum(agg.uniqueOpens, agg.delivered)
+  const openPrev = pctNum(aggPrev.uniqueOpens, aggPrev.delivered)
+  const ctr = pctNum(agg.uniqueClicks, agg.delivered)
+  const ctrPrev = pctNum(aggPrev.uniqueClicks, aggPrev.delivered)
+  const openDelta = open - openPrev
+  const ctrDelta = ctr - ctrPrev
+
+  if (aggPrev.delivered > 0 && Math.abs(openDelta) >= 2) {
+    out.push({
+      tone: openDelta > 0 ? 'green' : 'red',
+      icon: <EyeIcon />,
+      title: `Open rate ${openDelta > 0 ? 'improved' : 'declined'}`,
+      text: `${Math.abs(openDelta).toFixed(1)}pp ${openDelta > 0 ? 'above' : 'below'} the previous comparable period.`,
+    })
+  }
+
+  if (aggPrev.delivered > 0 && Math.abs(ctrDelta) >= 1) {
+    out.push({
+      tone: ctrDelta > 0 ? 'purple' : 'amber',
+      icon: <PointerIcon />,
+      title: `CTR ${ctrDelta > 0 ? 'is gaining' : 'needs attention'}`,
+      text: `${ctr.toFixed(1)}% CTR, ${Math.abs(ctrDelta).toFixed(1)}pp ${ctrDelta > 0 ? 'up' : 'down'} versus the previous period.`,
+    })
+  }
+
+  const regions = groupBy(current, 'region', 'region').filter((g) => g.delivered >= 100)
+  const weakest = [...regions].sort(
+    (a, b) => pctNum(a.uniqueOpens, a.delivered) - pctNum(b.uniqueOpens, b.delivered),
+  )[0]
+  if (weakest) {
+    const weakOpen = pctNum(weakest.uniqueOpens, weakest.delivered)
+    if (weakOpen <= open - 6) {
+      out.push({
+        tone: 'amber',
+        icon: <FlagIcon />,
+        title: `${weakest.label} is below the aggregate`,
+        text: `${weakOpen.toFixed(1)}% open rate, ${Math.abs(weakOpen - open).toFixed(1)}pp below the current overall rate.`,
+      })
+    }
+  }
+
+  const templates = groupBy(current, 'templateKey', 'templateName').filter((g) => g.delivered >= 100)
+  const top = [...templates].sort(
+    (a, b) => pctNum(b.uniqueClicks, b.delivered) - pctNum(a.uniqueClicks, a.delivered),
+  )[0]
+  if (top) {
+    out.push({
+      tone: 'blue',
+      icon: <SparkleIcon />,
+      title: 'Top click driver',
+      text: `${top.label} leads the current period at ${pctNum(top.uniqueClicks, top.delivered).toFixed(1)}% CTR.`,
+    })
+  }
+
+  return out.slice(0, 3)
+}
+
 function buildSummary(agg, aggPrev, current) {
   const bits = []
   const openNow = pctNum(agg.uniqueOpens, agg.delivered),
@@ -890,148 +3443,548 @@ function buildSummary(agg, aggPrev, current) {
   return bits.map((b, i) => (i === 0 ? b.charAt(0).toUpperCase() + b.slice(1) : b)).join('; ') + '.'
 }
 
-const Screen = ({ children }) => (
-  <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: C.bg }}>
-    {children}
-  </div>
-)
-const Spinner = () => (
-  <div
-    style={{
-      width: 32,
-      height: 32,
-      border: `3px solid ${C.border}`,
-      borderTopColor: C.green,
-      borderRadius: '50%',
-      animation: 'sp .8s linear infinite',
-    }}
-  >
-    <style>{`@keyframes sp{to{transform:rotate(360deg)}}`}</style>
-  </div>
-)
-const Banner = ({ children }) => (
-  <div
-    style={{
-      background: '#fef3c7',
-      border: '1px solid #f59e0b',
-      borderRadius: 8,
-      padding: '10px 14px',
-      fontSize: 12,
-      color: '#92400e',
-      marginBottom: 14,
-    }}
-  >
-    ⚠️ {children}
-  </div>
-)
-const Empty = ({ children }) => (
-  <div style={{ textAlign: 'center', padding: 28, color: C.mid, fontSize: 13 }}>{children}</div>
-)
-const hdrBtn = {
-  background: 'rgba(255,255,255,.1)',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 6,
-  padding: '5px 10px',
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: 'pointer',
+function buildWeeklyBrief(rows, campaigns, tplMap) {
+  if (!rows.length) {
+    return {
+      hasData: false,
+      metrics: [],
+      bullets: [],
+      recommendation: 'No activity available.',
+      text: 'Marketing Weekly Brief\n\nNo activity available in the selected scope.',
+      endDate: '',
+      endLabel: '—',
+    }
+  }
+
+  const anchor = rows.reduce((max, row) => {
+    const value = new Date(row.date).getTime()
+    return Number.isFinite(value) ? Math.max(max, value) : max
+  }, 0)
+  const end = new Date(anchor)
+  end.setHours(23, 59, 59, 999)
+  const curStart = end.getTime() - 6 * dayMs
+  const prevEnd = curStart - 1
+  const prevStart = prevEnd - 6 * dayMs
+  const week = rows.filter((row) => {
+    const t = new Date(row.date).getTime()
+    return t >= curStart && t <= end.getTime()
+  })
+  const prior = rows.filter((row) => {
+    const t = new Date(row.date).getTime()
+    return t >= prevStart && t <= prevEnd
+  })
+
+  if (!week.length) {
+    return {
+      hasData: false,
+      metrics: [],
+      bullets: [],
+      recommendation: 'No activity available.',
+      text: 'Marketing Weekly Brief\n\nNo activity available in the latest 7-day window.',
+      endDate: toDateKey(end),
+      endLabel: end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+    }
+  }
+
+  const agg = sumRows(week)
+  const prevAgg = sumRows(prior)
+  const m = metricsFromAgg(agg)
+  const p = metricsFromAgg(prevAgg)
+  const campaignGroups = enrichCampaignGroups(buildCampaignGroups(week, campaigns))
+  const topCampaign = [...campaignGroups].sort((a, b) => b.uniqueClicks - a.uniqueClicks)[0]
+  const templateGroups = metricGroups(week, 'templateKey', 'templateName')
+  const topTemplate = [...templateGroups].sort((a, b) => b.uniqueClicks - a.uniqueClicks)[0]
+  const quality = analyzeDataQuality(week, tplMap, campaigns)
+  const healthScore = buildHealthScore(agg)
+  const intelligence = buildIntelligenceFeed({
+    current: week,
+    previous: prior,
+    scopeCurrent: week,
+    scopePrevious: prior,
+    campaigns,
+    tplMap,
+  })
+
+  const hasPrior = prevAgg.sent > 0 || prevAgg.delivered > 0
+  const sentChange = prevAgg.sent ? ((agg.sent - prevAgg.sent) / prevAgg.sent) * 100 : null
+  const bullets = []
+  bullets.push(
+    `${fmt(agg.sent)} messages were sent and ${fmt(agg.delivered)} delivered${sentChange == null ? '' : `, ${Math.abs(sentChange).toFixed(1)}% ${sentChange >= 0 ? 'above' : 'below'} the preceding week`}.`,
+  )
+  bullets.push(
+    hasPrior
+      ? `Open rate finished at ${m.open.toFixed(1)}% (${signedPp(m.open - p.open)} vs prior week) and CTR at ${m.ctr.toFixed(1)}% (${signedPp(m.ctr - p.ctr)}).`
+      : `Open rate finished at ${m.open.toFixed(1)}% and CTR at ${m.ctr.toFixed(1)}%; no comparable prior-week volume is available.`,
+  )
+  if (topCampaign) {
+    bullets.push(
+      `${topCampaign.label} generated the most campaign-attributed unique clicks (${fmt(topCampaign.uniqueClicks)}) at ${topCampaign.ctr.toFixed(1)}% CTR.`,
+    )
+  }
+  if (topTemplate) {
+    bullets.push(
+      `${topTemplate.label} was the strongest template by unique-click contribution (${fmt(topTemplate.uniqueClicks)} clicks, ${topTemplate.ctr.toFixed(1)}% CTR).`,
+    )
+  }
+  bullets.push(
+    `Deliverability health is ${healthScore}/100 and reporting data quality is ${quality.score}/100.`,
+  )
+
+  const recommendation = intelligence[0]?.action || intelligence[0]?.text ||
+    (healthScore < 90
+      ? 'Review deliverability signals and isolate the campaigns or regions creating the health penalty.'
+      : quality.score < 90
+        ? 'Resolve the highest-severity mapping or integrity findings before using the data for deeper optimization.'
+        : 'Keep the strongest campaign/template pattern as the next test baseline and validate it against a comparable audience.')
+
+  const endDate = toDateKey(end)
+  const endLabel = end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  const text = [
+    'Marketing Weekly Brief',
+    `Week ending ${endLabel}`,
+    '',
+    `Sent: ${fmt(agg.sent)}`,
+    `Delivered: ${fmt(agg.delivered)} (${m.delivery.toFixed(1)}%)`,
+    `Open rate: ${m.open.toFixed(1)}%${hasPrior ? ` (${signedPp(m.open - p.open)} vs prior week)` : ''}`,
+    `CTR: ${m.ctr.toFixed(1)}%${hasPrior ? ` (${signedPp(m.ctr - p.ctr)} vs prior week)` : ''}`,
+    `CTOR: ${m.ctor.toFixed(1)}%`,
+    '',
+    'What changed',
+    ...bullets.map((line) => `- ${line}`),
+    '',
+    `Recommended focus: ${recommendation}`,
+  ].join('\n')
+
+  return {
+    hasData: true,
+    endDate,
+    endLabel,
+    metrics: [
+      { label: 'Open rate', value: `${m.open.toFixed(1)}%`, delta: hasPrior ? m.open - p.open : null },
+      { label: 'CTR', value: `${m.ctr.toFixed(1)}%`, delta: hasPrior ? m.ctr - p.ctr : null },
+      { label: 'Delivery', value: `${m.delivery.toFixed(1)}%`, delta: hasPrior ? m.delivery - p.delivery : null },
+      { label: 'Bounce', value: `${m.bounce.toFixed(1)}%`, delta: hasPrior ? m.bounce - p.bounce : null },
+    ],
+    bullets,
+    recommendation,
+    text,
+  }
 }
+
+function signedPp(value) {
+  if (!Number.isFinite(value)) return '—'
+  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}pp`
+}
+
+function downloadTextFile(name, text) {
+  if (typeof window === 'undefined') return
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+function toDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10)
+}
+
+function formatShortDate(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+}
+
+function calendarMonthLabel(month) {
+  if (!month) return '—'
+  const [year, m] = month.split('-').map(Number)
+  const date = new Date(year, m - 1, 1)
+  return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+}
+
+function buildCampaignCalendarEntries(rows, campaigns) {
+  const campaignsByKey = new Map()
+  for (const campaign of campaigns) {
+    for (const key of campaign.keys || []) {
+      if (!campaignsByKey.has(key)) campaignsByKey.set(key, [])
+      campaignsByKey.get(key).push(campaign)
+    }
+  }
+
+  const groups = new Map()
+  for (const row of rows) {
+    const matching = campaignsByKey.get(row.templateKey) || []
+    if (!matching.length) continue
+    const date = toDateKey(row.date)
+    if (!date) continue
+    for (const campaign of matching) {
+      const id = `${date}|${campaign.name}`
+      if (!groups.has(id)) groups.set(id, { date, month: date.slice(0, 7), campaign: campaign.name, color: campaign.color, rows: [] })
+      groups.get(id).rows.push(row)
+    }
+  }
+
+  return [...groups.values()].map((group) => {
+    const agg = sumRows(group.rows)
+    const metrics = metricsFromAgg(agg)
+    return { ...group, ...agg, ...metrics }
+  }).sort((a, b) => a.date.localeCompare(b.date) || b.sent - a.sent)
+}
+
+function buildTemplateFatigue(rows, tplMap) {
+  const templates = new Map()
+  for (const row of rows) {
+    const key = row.templateKey || row.templateName
+    if (!key) continue
+    const date = toDateKey(row.date)
+    if (!date) continue
+    if (!templates.has(key)) templates.set(key, new Map())
+    const byDate = templates.get(key)
+    if (!byDate.has(date)) byDate.set(date, [])
+    byDate.get(date).push(row)
+  }
+
+  const out = []
+  for (const [key, byDate] of templates.entries()) {
+    const name = tplMap[key]?.name || [...byDate.values()].flat().find((r) => r.templateName)?.templateName || key
+    const family = tplMap[key]?.family || familyOfName(name)
+    const points = [...byDate.entries()]
+      .map(([date, dayRows]) => {
+        const agg = sumRows(dayRows)
+        return {
+          date,
+          d: formatShortDate(date),
+          sent: agg.sent,
+          delivered: agg.delivered,
+          uniqueOpens: agg.uniqueOpens,
+          uniqueClicks: agg.uniqueClicks,
+          open: pctNum(agg.uniqueOpens, agg.delivered),
+          ctr: pctNum(agg.uniqueClicks, agg.delivered),
+        }
+      })
+      .filter((point) => point.sent > 0 || point.delivered > 0)
+      .sort((a, b) => a.date.localeCompare(b.date))
+
+    const useCount = points.length
+    const compareSize = useCount >= 6 ? 3 : useCount >= 4 ? 2 : 0
+    let recentOpen = null
+    let recentCtr = null
+    let openDelta = null
+    let ctrDelta = null
+    let fatigueScore = 0
+    let status = 'insufficient'
+
+    if (compareSize) {
+      const priorPoints = points.slice(-(compareSize * 2), -compareSize)
+      const recentPoints = points.slice(-compareSize)
+      const aggregatePoints = (list) => list.reduce((acc, point) => {
+        acc.delivered += point.delivered
+        acc.opens += point.uniqueOpens
+        acc.clicks += point.uniqueClicks
+        return acc
+      }, { delivered: 0, opens: 0, clicks: 0 })
+      const prior = aggregatePoints(priorPoints)
+      const recent = aggregatePoints(recentPoints)
+      const priorOpen = pctNum(prior.opens, prior.delivered)
+      const priorCtr = pctNum(prior.clicks, prior.delivered)
+      recentOpen = pctNum(recent.opens, recent.delivered)
+      recentCtr = pctNum(recent.clicks, recent.delivered)
+      openDelta = recentOpen - priorOpen
+      ctrDelta = recentCtr - priorCtr
+      fatigueScore = Math.max(0, Math.min(100, Math.round(Math.max(0, -openDelta) * 9 + Math.max(0, -ctrDelta) * 22)))
+      if ((openDelta <= -4 && ctrDelta <= -1) || ctrDelta <= -2 || openDelta <= -7) status = 'fatigued'
+      else if (openDelta <= -3 || ctrDelta <= -1) status = 'watch'
+      else status = 'stable'
+    }
+
+    out.push({
+      key,
+      label: name,
+      family,
+      points,
+      useCount,
+      lastUsed: points[points.length - 1]?.date || null,
+      recentOpen,
+      recentCtr,
+      openDelta,
+      ctrDelta,
+      fatigueScore,
+      status,
+    })
+  }
+
+  const rank = { fatigued: 0, watch: 1, stable: 2, insufficient: 3 }
+  return out.sort((a, b) => rank[a.status] - rank[b.status] || b.fatigueScore - a.fatigueScore || b.useCount - a.useCount)
+}
+
+function buildTemplateLibraryEntries(rows, tplMap) {
+  const rowGroups = new Map()
+  for (const row of rows) {
+    const key = row.templateKey || row.templateName
+    if (!key) continue
+    if (!rowGroups.has(key)) rowGroups.set(key, [])
+    rowGroups.get(key).push(row)
+  }
+  const keys = new Set([...Object.keys(tplMap), ...rowGroups.keys()])
+  return [...keys].map((key) => {
+    const activeRows = rowGroups.get(key) || []
+    const mapped = Boolean(tplMap[key])
+    const label = tplMap[key]?.name || activeRows.find((r) => r.templateName)?.templateName || key
+    const family = tplMap[key]?.family || familyOfName(label)
+    const agg = sumRows(activeRows)
+    const metrics = metricsFromAgg(agg)
+    const lastUsed = activeRows.reduce((max, row) => {
+      const value = new Date(row.date).getTime()
+      return Number.isFinite(value) ? Math.max(max, value) : max
+    }, 0)
+    return {
+      key,
+      label,
+      family,
+      theme: themeOf(label),
+      mapped,
+      lastUsed: lastUsed ? new Date(lastUsed).toISOString() : null,
+      ...agg,
+      ...metrics,
+    }
+  }).sort((a, b) => b.sent - a.sent || a.label.localeCompare(b.label))
+}
+
+function templateInitials(label) {
+  const parts = String(label || 'T').replace(/[^a-zA-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean)
+  if (!parts.length) return 'T'
+  return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join('')
+}
+
+function countValues(rows, getter) {
+  const map = new Map()
+  for (const row of rows) {
+    const value = getter(row) || 'Unknown'
+    map.set(value, (map.get(value) || 0) + 1)
+  }
+  return map
+}
+
+const Screen = ({ children }) => (
+  <div className="analyticsLoadingScreen">{children}</div>
+)
+
+const Spinner = () => (
+  <div className="analyticsSpinner" aria-label="Loading" />
+)
+
+const Banner = ({ children }) => (
+  <div className="analyticsWarning" role="alert">
+    <AlertIcon />
+    <span>{children}</span>
+  </div>
+)
+
+const Empty = ({ children }) => (
+  <div className="analyticsEmpty">{children}</div>
+)
+
 const thR = {
   fontSize: 11,
   fontWeight: 700,
-  padding: '8px 10px',
+  padding: '10px 12px',
   textAlign: 'right',
   color: C.mid,
-  borderBottom: `2px solid ${C.border}`,
+  borderBottom: `1px solid ${C.border}`,
   whiteSpace: 'nowrap',
 }
+
 const tdR = {
   fontSize: 12,
-  padding: '8px 10px',
+  padding: '10px 12px',
   textAlign: 'right',
   color: C.dark,
-  borderBottom: `1px solid ${C.bg}`,
+  borderBottom: `1px solid ${C.border}`,
   whiteSpace: 'nowrap',
+}
+
+function MiniStat({ label, value, detail, tone = 'blue', icon }) {
+  return (
+    <div className={`analyticsMiniStat analyticsMiniStat-${tone}`}>
+      <div className="analyticsMiniStatIcon">{icon}</div>
+      <div className="analyticsMiniStatCopy">
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <p>{detail}</p>
+      </div>
+    </div>
+  )
+}
+
+function InsightCard({ tone = 'blue', icon, title, text }) {
+  return (
+    <div className={`analyticsInsightCard analyticsInsightCard-${tone}`}>
+      <div className="analyticsInsightIcon">{icon}</div>
+      <div>
+        <strong>{title}</strong>
+        <p>{text}</p>
+      </div>
+    </div>
+  )
+}
+
+function StatusBadge({ label, tone = 'neutral' }) {
+  return <span className={`analyticsStatusBadge analyticsStatusBadge-${tone}`}>{label}</span>
+}
+
+function MetricDelta({ value, suffix = 'pp' }) {
+  if (!Number.isFinite(value) || Math.abs(value) < 0.05) {
+    return <span className="analyticsMetricDelta neutral">≈</span>
+  }
+  const up = value > 0
+  return (
+    <span className={`analyticsMetricDelta ${up ? 'up' : 'down'}`}>
+      {up ? '↑' : '↓'} {Math.abs(value).toFixed(1)}{suffix}
+    </span>
+  )
+}
+
+function HealthDimension({ label, value, target, good, max, inverse = false, digits = 1 }) {
+  const normalized = Math.max(0, Math.min(100, inverse ? 100 - (value / max) * 100 : (value / max) * 100))
+  return (
+    <div className="analyticsHealthDimension">
+      <div className="analyticsHealthDimensionTop">
+        <span>{label}</span>
+        <strong className={good ? 'good' : 'bad'}>{value.toFixed(digits)}%</strong>
+      </div>
+      <div className="analyticsHealthTrack">
+        <span className={good ? 'good' : 'bad'} style={{ width: `${normalized}%` }} />
+      </div>
+      <small>{target}</small>
+    </div>
+  )
 }
 
 function DeltaBadge({ delta, goodUp }) {
   if (!delta) return null
-  if (delta.up === null)
-    return <span style={{ fontSize: 10, color: C.mid, marginLeft: 6 }}>{delta.txt}</span>
+
+  if (delta.up === null) {
+    return <span className="analyticsDelta neutral">{delta.txt}</span>
+  }
+
   const isGood = goodUp ? delta.up : !delta.up
-  const clr = isGood ? C.greenTxt : C.red
+
   return (
-    <span style={{ fontSize: 10, fontWeight: 700, color: clr, marginLeft: 6 }}>
+    <span className={`analyticsDelta ${isGood ? 'good' : 'bad'}`}>
       {delta.up ? '▲' : '▼'} {delta.txt}
     </span>
   )
 }
-function Filter({ label, value, set, opts }) {
+
+function Filter({ label, value, set, opts, icon }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => set(e.target.value)}
-      title={label}
-      style={{
-        padding: '7px 11px',
-        borderRadius: 7,
-        border: `1px solid ${C.border}`,
-        background: C.white,
-        color: C.dark,
-        fontSize: 12,
-        cursor: 'pointer',
-      }}
-    >
-      {opts.map(([v, l]) => (
-        <option key={v} value={v}>
-          {l}
-        </option>
-      ))}
-    </select>
+    <label className="analyticsFilter" title={label}>
+      {icon && <span className="analyticsFilterIcon">{icon}</span>}
+      <select value={value} onChange={(e) => set(e.target.value)} aria-label={label}>
+        {opts.map(([v, l]) => (
+          <option key={v} value={v}>{l}</option>
+        ))}
+      </select>
+      <ChevronDownIcon />
+    </label>
   )
 }
-function Kpi({ ico, label, val, clr, sub, delta, goodUp }) {
+
+function Kpi({ ico, label, val, clr, sub, delta, goodUp, spark, sparkKey, accent = 'blue' }) {
   return (
-    <div
-      style={{
-        background: C.white,
-        borderRadius: 12,
-        padding: '14px 16px',
-        border: `1px solid ${C.border}`,
-        boxShadow: '0 1px 4px rgba(0,0,0,.04)',
-      }}
-    >
-      <div style={{ fontSize: 17, marginBottom: 5 }}>{ico}</div>
-      <div style={{ display: 'flex', alignItems: 'baseline' }}>
-        <span style={{ fontSize: 20, fontWeight: 800, color: clr }}>{val}</span>
+    <div className={`analyticsKpi analyticsKpi-${accent}`}>
+      <div className="analyticsKpiTop">
+        <div className="analyticsKpiIcon">{ico}</div>
+      </div>
+
+      <div className="analyticsKpiValueRow">
+        <span className="analyticsKpiValue" style={{ color: clr }}>{val}</span>
         <DeltaBadge delta={delta} goodUp={goodUp} />
       </div>
-      <div style={{ fontSize: 11, color: C.mid, marginTop: 2, fontWeight: 600 }}>{label}</div>
-      {sub && <div style={{ fontSize: 10, color: C.mid, marginTop: 1 }}>{sub}</div>}
-    </div>
-  )
-}
-function Card({ title, sub, children }) {
-  return (
-    <div
-      style={{
-        background: C.white,
-        borderRadius: 12,
-        border: `1px solid ${C.border}`,
-        padding: 18,
-        marginBottom: 16,
-        boxShadow: '0 1px 4px rgba(0,0,0,.04)',
-      }}
-    >
-      <div style={{ fontSize: 15, fontWeight: 700, color: C.dark }}>{title}</div>
-      {sub && (
-        <div style={{ fontSize: 12, color: C.mid, marginTop: 2, marginBottom: 12 }}>{sub}</div>
+
+      <div className="analyticsKpiLabel">{label}</div>
+      {sub && <div className="analyticsKpiSub">{sub}</div>}
+
+      {spark?.length > 1 && sparkKey && (
+        <div className="analyticsSparkline" aria-hidden="true">
+          <ResponsiveContainer width="100%" height={34}>
+            <LineChart data={spark} margin={{ top: 4, right: 1, left: 1, bottom: 1 }}>
+              <Line
+                type="monotone"
+                dataKey={sparkKey}
+                stroke={clr}
+                strokeWidth={1.7}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       )}
-      {children}
     </div>
   )
 }
+
+function Card({ title, sub, children, actions, className = '' }) {
+  return (
+    <section className={`analyticsCard ${className}`.trim()}>
+      <div className="analyticsCardHeader">
+        <div>
+          <div className="analyticsCardTitle">{title}</div>
+          {sub && <div className="analyticsCardSub">{sub}</div>}
+        </div>
+        {actions && <div className="analyticsCardActions">{actions}</div>}
+      </div>
+      <div className="analyticsCardBody">{children}</div>
+    </section>
+  )
+}
+
+function AnalyticsTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="analyticsTooltip">
+      <div className="analyticsTooltipLabel">{label}</div>
+      {payload.map((item) => (
+        <div className="analyticsTooltipRow" key={item.dataKey}>
+          <span className="analyticsTooltipDot" style={{ background: item.color }} />
+          <span>{item.name}</span>
+          <strong>{fmt(item.value)}</strong>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AnalyticsFeatureStrip() {
+  const features = [
+    [<ShieldIcon key="s" />, 'Secure & Reliable', 'Enterprise-grade data protection'],
+    [<BoltIcon key="b" />, 'Real-time Updates', 'Metrics refresh as new data arrives'],
+    [<UsersIcon key="u" />, 'Built for Your Team', 'One view for marketing performance'],
+    [<MailIcon key="m" />, 'Deliverability Health', 'Monitor inbox placement signals'],
+  ]
+
+  return (
+    <div className="analyticsFeatureStrip no-print">
+      {features.map(([icon, title, text]) => (
+        <div className="analyticsFeature" key={title}>
+          <div className="analyticsFeatureIcon">{icon}</div>
+          <div>
+            <strong>{title}</strong>
+            <span>{text}</span>
+          </div>
+          <ArrowRightIcon />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function BreakdownBars({ data }) {
   return (
     <ResponsiveContainer width="100%" height={200}>
@@ -1039,7 +3992,7 @@ function BreakdownBars({ data }) {
         <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
         <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.mid }} />
         <YAxis tick={{ fontSize: 11, fill: C.mid }} unit="%" />
-        <Tooltip />
+        <Tooltip content={<AnalyticsTooltip />} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Bar dataKey="open" fill={C.green} name="Open rate %" radius={[4, 4, 0, 0]} />
         <Bar dataKey="ctr" fill={C.purple} name="CTR %" radius={[4, 4, 0, 0]} />
@@ -1098,6 +4051,77 @@ function LeaderTable({ groups, nameKey }) {
     </div>
   )
 }
+
+/* ---------------------------------------------------------------- Icons */
+
+const IconSvg = ({ children, size = 18, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    {...props}
+  >
+    {children}
+  </svg>
+)
+
+function NavIcon({ name }) {
+  if (name === 'Overview') return <HomeIcon />
+  if (name === 'Executive') return <SparkleIcon />
+  if (name === 'Campaigns') return <SendIcon />
+  if (name === 'Templates') return <TemplateIcon />
+  if (name === 'Audience') return <GlobeIcon />
+  if (name === 'Channels') return <ChannelsIcon />
+  if (name === 'Timing') return <ClockIcon />
+  if (name === 'Journeys') return <JourneyIcon />
+  if (name === 'Deliverability') return <DeliverabilityIcon />
+  if (name === 'Alerts') return <BellIcon />
+  return <DataQualityIcon />
+}
+
+function HomeIcon() { return <IconSvg><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></IconSvg> }
+function SendIcon() { return <IconSvg><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></IconSvg> }
+function TemplateIcon() { return <IconSvg><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></IconSvg> }
+function ChannelsIcon() { return <IconSvg><path d="M8.5 5.5a5 5 0 0 0 0 7M15.5 5.5a5 5 0 0 1 0 7"/><circle cx="12" cy="12" r="2"/><path d="M5.5 2.5a9 9 0 0 0 0 19M18.5 2.5a9 9 0 0 1 0 19"/></IconSvg> }
+function ClockIcon() { return <IconSvg><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></IconSvg> }
+function JourneyIcon() { return <IconSvg><circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h4a4 4 0 0 1 4 4v1"/><path d="m13 9 3 3 3-3"/><path d="M16 14v1a3 3 0 0 0 2 3"/></IconSvg> }
+function DeliverabilityIcon() { return <IconSvg><path d="M4 4h16v16H4z"/><path d="m7 15 3-3 2 2 5-6"/></IconSvg> }
+function DataQualityIcon() { return <IconSvg><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5"/><path d="m14 17 2 2 4-5"/></IconSvg> }
+function GlobeIcon() { return <IconSvg><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></IconSvg> }
+function BellIcon() { return <IconSvg><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></IconSvg> }
+function GridIcon() { return <IconSvg><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/></IconSvg> }
+function LogoutIcon() { return <IconSvg><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></IconSvg> }
+function SunIcon() { return <IconSvg><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></IconSvg> }
+function MoonIcon() { return <IconSvg><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3 6.5 6.5 0 0 0 21 12.8Z"/></IconSvg> }
+function CalendarIcon() { return <IconSvg size={16}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></IconSvg> }
+function ChevronDownIcon() { return <IconSvg size={14}><path d="m6 9 6 6 6-6"/></IconSvg> }
+function DownloadIcon() { return <IconSvg size={16}><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></IconSvg> }
+function CopyIcon() { return <IconSvg size={16}><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></IconSvg> }
+function SearchIcon() { return <IconSvg size={16}><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></IconSvg> }
+function ArrowRightIcon() { return <IconSvg size={16}><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></IconSvg> }
+function ArrowLeftIcon() { return <IconSvg size={16}><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></IconSvg> }
+function SparkleIcon() { return <IconSvg size={19}><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5Z"/><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7Z"/></IconSvg> }
+function MailIcon() { return <IconSvg><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></IconSvg> }
+function CheckIcon() { return <IconSvg><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m7 12 3 3 7-7"/></IconSvg> }
+function EyeIcon() { return <IconSvg><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></IconSvg> }
+function PointerIcon() { return <IconSvg><path d="m5 3 11 9-5 1 3 6-3 1.5-3-6-3 4Z"/></IconSvg> }
+function TargetIcon() { return <IconSvg><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M22 12h-3"/></IconSvg> }
+function FlagIcon() { return <IconSvg><path d="M5 21V4"/><path d="M5 5h12l-2 4 2 4H5"/></IconSvg> }
+function BounceIcon() { return <IconSvg><path d="M9 7H5v4"/><path d="M5 11a7 7 0 1 1 2 5"/></IconSvg> }
+function BanIcon() { return <IconSvg><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></IconSvg> }
+function TrendIcon() { return <IconSvg size={16}><path d="M3 17 9 11l4 4 8-9"/></IconSvg> }
+function BarsIcon() { return <IconSvg size={16}><path d="M5 20V10M12 20V4M19 20v-7"/></IconSvg> }
+function AlertIcon() { return <IconSvg size={17}><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></IconSvg> }
+function ShieldIcon() { return <IconSvg><path d="M12 22s8-3 8-10V5l-8-3-8 3v7c0 7 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></IconSvg> }
+function BoltIcon() { return <IconSvg><path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z"/></IconSvg> }
+function UsersIcon() { return <IconSvg><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></IconSvg> }
+
 
 /* ---------------------------------------------------------------- Export */
 
@@ -1178,56 +4202,33 @@ function ExportMenu({ rows, agg, aggPrev, tplMap, campaigns, meta }) {
   ]
 
   return (
-    <div className="no-print" style={{ position: 'relative' }}>
+    <div className="analyticsExport no-print">
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={!rows.length}
-        style={{
-          padding: '7px 11px',
-          borderRadius: 7,
-          border: `1px solid ${C.border}`,
-          background: C.white,
-          color: rows.length ? C.blue : C.mid,
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: rows.length ? 'pointer' : 'not-allowed',
-        }}
+        className="analyticsExportButton"
       >
-        ⬇ Export ▾
+        <DownloadIcon />
+        <span>Export</span>
+        <ChevronDownIcon />
       </button>
+
       {open && (
         <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
-          <div
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: 'calc(100% + 4px)',
-              zIndex: 11,
-              background: C.white,
-              border: `1px solid ${C.border}`,
-              borderRadius: 8,
-              boxShadow: '0 6px 20px rgba(0,0,0,.12)',
-              minWidth: 190,
-              overflow: 'hidden',
-            }}
-          >
+          <button
+            type="button"
+            className="analyticsExportBackdrop"
+            onClick={() => setOpen(false)}
+            aria-label="Close export menu"
+          />
+          <div className="analyticsExportMenu">
             {items.map(([label, fn], i) => (
               <button
+                type="button"
                 key={label}
                 onClick={run(fn)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '9px 13px',
-                  background: 'none',
-                  border: 'none',
-                  borderTop: i === items.length - 1 ? `1px solid ${C.border}` : 'none',
-                  fontSize: 12,
-                  color: C.dark,
-                  cursor: 'pointer',
-                }}
+                className={i === items.length - 1 ? 'printAction' : ''}
               >
                 {label}
               </button>
@@ -1241,36 +4242,7 @@ function ExportMenu({ rows, agg, aggPrev, tplMap, campaigns, meta }) {
 
 /* ---------------------------------------------------------------- Timing */
 
-// Bucket raw events into a 7 (Mon–Sun) x 24 (local hour) grid.
-function buildHourGrid(events, metric) {
-  const want = metric === 'clicks' ? 'clicked' : metric === 'opens' ? 'opened' : 'delivered'
-  const grid = DOW.map(() => new Array(24).fill(0))
-  let total = 0
-  for (const e of events) {
-    if (e.eventType !== want) continue
-    const d = new Date(e.timestamp)
-    if (Number.isNaN(d.getTime())) continue
-    grid[(d.getDay() + 6) % 7][d.getHours()] += 1
-    total += 1
-  }
-  return { grid, total }
-}
-
-// Fallback when no raw events exist yet: day-of-week only, from the daily rollup.
-function buildDowFromRows(rows, metric) {
-  const key =
-    metric === 'clicks' ? 'uniqueClicks' : metric === 'opens' ? 'uniqueOpens' : 'delivered'
-  const out = DOW.map(() => 0)
-  let total = 0
-  for (const r of rows) {
-    const d = new Date(r.date)
-    if (Number.isNaN(d.getTime())) continue
-    out[(d.getDay() + 6) % 7] += r[key] || 0
-    total += r[key] || 0
-  }
-  return { out, total }
-}
-
+// Send-time heatmap utilities.
 function heatColor(v, max) {
   if (!max || !v) return C.bg
   // Perceptually simple ramp: light blue tint -> brand green at the peak.
@@ -1283,29 +4255,21 @@ function heatColor(v, max) {
 
 const hh = (h) => String(h).padStart(2, '0') + ':00'
 
-function MetricPicker({ metric, setMetric }) {
+function TimingMetricPicker({ metric, setMetric }) {
   return (
-    <div className="no-print" style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+    <div className="analyticsSegmentRow no-print">
       {[
-        ['opens', 'Opens'],
-        ['clicks', 'Clicks'],
-        ['delivered', 'Delivered'],
-      ].map(([v, l]) => (
+        ['openRate', 'Open rate'],
+        ['ctr', 'CTR'],
+        ['delivered', 'Delivered volume'],
+      ].map(([value, label]) => (
         <button
-          key={v}
-          onClick={() => setMetric(v)}
-          style={{
-            padding: '5px 12px',
-            borderRadius: 6,
-            border: `1px solid ${metric === v ? C.blue : C.border}`,
-            background: metric === v ? C.blueLight : C.white,
-            color: metric === v ? C.blue : C.mid,
-            fontSize: 12,
-            fontWeight: metric === v ? 700 : 500,
-            cursor: 'pointer',
-          }}
+          type="button"
+          key={value}
+          onClick={() => setMetric(value)}
+          className={`analyticsSegmentButton ${metric === value ? 'active' : ''}`}
         >
-          {l}
+          {label}
         </button>
       ))}
     </div>
@@ -1313,166 +4277,277 @@ function MetricPicker({ metric, setMetric }) {
 }
 
 function TimingTab({ events, current }) {
-  const [metric, setMetric] = useState('opens')
+  const [metric, setMetric] = useState('openRate')
 
-  if (events === null)
+  if (events === null) {
     return (
-      <Card title="Send-time performance" sub="Loading raw events…">
+      <Card title="Best send time" sub="Loading delivered/open/click events for send-time attribution…">
         <Spinner />
-      </Card>
-    )
-
-  const label = metric === 'clicks' ? 'Clicks' : metric === 'opens' ? 'Opens' : 'Delivered'
-
-  if (!events.length) {
-    // No raw events yet (mock rollups only) — show what the daily rollup can answer.
-    const { out, total } = buildDowFromRows(current, metric)
-    const max = Math.max(...out)
-    const best = out.indexOf(max)
-    return (
-      <Card
-        title="Send-time performance"
-        sub="Hour-of-day needs raw events — showing day-of-week from the daily rollup"
-      >
-        <MetricPicker metric={metric} setMetric={setMetric} />
-        <Banner>
-          No raw events in this range yet, so hourly resolution is not available. Once the Mailgun
-          and OneSignal webhooks are live in production the full 7 x 24 heatmap fills in here.
-        </Banner>
-        <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-          {DOW.map((d, i) => (
-            <div key={d} style={{ flex: 1, textAlign: 'center' }}>
-              <div
-                title={`${d}: ${fmt(out[i])} ${label.toLowerCase()}`}
-                style={{
-                  height: 72,
-                  borderRadius: 8,
-                  background: heatColor(out[i], max),
-                  border: `1px solid ${C.border}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: out[i] > max * 0.55 ? '#fff' : C.dark,
-                }}
-              >
-                {fmt(out[i])}
-              </div>
-              <div style={{ fontSize: 11, color: C.mid, marginTop: 4, fontWeight: 600 }}>{d}</div>
-            </div>
-          ))}
-        </div>
-        <div style={{ fontSize: 12, color: C.mid, marginTop: 12 }}>
-          {total > 0 ? (
-            <>
-              Best day for <strong>{label.toLowerCase()}</strong>: <strong>{DOW[best]}</strong> ·{' '}
-              {fmt(max)} of {fmt(total)} ({pctStr(max, total)}).
-            </>
-          ) : (
-            'No data in the selected range.'
-          )}
-        </div>
       </Card>
     )
   }
 
-  const { grid, total } = buildHourGrid(events, metric)
-  const max = Math.max(...grid.flat())
-  let bestCell = { d: 0, h: 0, v: 0 }
-  grid.forEach((row, d) =>
-    row.forEach((v, h) => {
-      if (v > bestCell.v) bestCell = { d, h, v }
-    }),
-  )
-  const hourTotals = new Array(24).fill(0)
-  grid.forEach((row) => row.forEach((v, h) => (hourTotals[h] += v)))
-  const bestHour = hourTotals.indexOf(Math.max(...hourTotals))
+  const label = metric === 'ctr' ? 'CTR' : metric === 'openRate' ? 'Open rate' : 'Delivered'
+
+  if (!events.length) {
+    const fallback = buildDowPerformanceFromRows(current)
+    const values = fallback.map((item) => metric === 'delivered' ? item.delivered : item[metric])
+    const max = Math.max(0, ...values)
+    const bestIndex = values.indexOf(max)
+
+    return (
+      <>
+        <div className="analyticsIntelHeader">
+          <div>
+            <span className="analyticsIntelEyebrow">SEND-TIME INTELLIGENCE</span>
+            <h2>When does historical performance peak?</h2>
+            <p>
+              Raw message-level events are not available in this range yet, so the dashboard is
+              showing day-of-week performance from the daily send rollup instead of pretending to
+              know the best hour.
+            </p>
+          </div>
+        </div>
+
+        <Card title="Day-of-week performance" sub="Fallback view from analytics-daily · hourly attribution requires raw delivered/open/click events">
+          <TimingMetricPicker metric={metric} setMetric={setMetric} />
+          <Banner>
+            Hourly send-time analysis is unavailable for this range. The daily rollup can support a
+            reliable day-of-week view, but not hour-of-day attribution.
+          </Banner>
+          <div className="analyticsDowHeatmap">
+            {fallback.map((item, index) => {
+              const value = values[index]
+              const text = metric === 'delivered' ? fmt(value) : `${value.toFixed(1)}%`
+              return (
+                <div className="analyticsDowHeatCell" key={item.day}>
+                  <div style={{ background: heatColor(value, max) }}><strong>{text}</strong></div>
+                  <span>{item.day}</span>
+                  <small>{fmt(item.delivered)} delivered</small>
+                </div>
+              )
+            })}
+          </div>
+          <div className="analyticsTimingConclusion">
+            <ClockIcon />
+            <span>
+              Best day for <strong>{label.toLowerCase()}</strong>: <strong>{DOW[Math.max(0, bestIndex)]}</strong>
+              {metric !== 'delivered' && fallback[bestIndex] ? ` · ${values[bestIndex].toFixed(1)}%` : ''}.
+            </span>
+          </div>
+        </Card>
+      </>
+    )
+  }
+
+  const attribution = buildSendTimeAttribution(events)
+  const grid = attribution.grid
+  const flat = grid.flat()
+  const metricValue = (cell) => metric === 'delivered' ? cell.delivered : cell[metric]
+  const values = flat.map(metricValue)
+  const max = Math.max(0, ...values)
+  const qualified = flat.filter((cell) => cell.delivered >= 10)
+  const candidates = qualified.length ? qualified : flat.filter((cell) => cell.delivered > 0)
+  const bestCell = [...candidates].sort((a, b) => metricValue(b) - metricValue(a))[0]
+
+  const byDay = DOW.map((day, d) => {
+    const cells = grid[d]
+    const delivered = cells.reduce((sum, cell) => sum + cell.delivered, 0)
+    const opens = cells.reduce((sum, cell) => sum + cell.opens, 0)
+    const clicks = cells.reduce((sum, cell) => sum + cell.clicks, 0)
+    return { day, delivered, openRate: pctNum(opens, delivered), ctr: pctNum(clicks, delivered) }
+  })
+  const bestDay = [...byDay].filter((item) => item.delivered > 0).sort((a, b) => (metric === 'delivered' ? b.delivered - a.delivered : b[metric] - a[metric]))[0]
+  const matchRate = pctNum(attribution.attributed, attribution.identities)
 
   return (
-    <Card
-      title="Send-time performance"
-      sub={`${label} by day of week x hour of day · ${fmt(total)} events · viewer local time`}
-    >
-      <MetricPicker metric={metric} setMetric={setMetric} />
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', minWidth: 760 }}>
-          <thead>
-            <tr>
-              <th style={{ ...thR, textAlign: 'left', padding: '4px 8px' }} />
-              {Array.from({ length: 24 }, (_, h) => (
-                <th key={h} style={{ ...thR, padding: '4px 2px', textAlign: 'center' }}>
-                  {h % 2 === 0 ? String(h).padStart(2, '0') : ''}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {grid.map((row, d) => (
-              <tr key={DOW[d]}>
-                <td
-                  style={{
-                    ...tdR,
-                    textAlign: 'left',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderBottom: 'none',
-                  }}
-                >
-                  {DOW[d]}
-                </td>
-                {row.map((v, h) => (
-                  <td key={h} style={{ padding: 1, borderBottom: 'none' }}>
-                    <div
-                      title={`${DOW[d]} ${hh(h)} — ${fmt(v)} ${label.toLowerCase()}`}
-                      style={{
-                        width: 26,
-                        height: 24,
-                        borderRadius: 4,
-                        background: heatColor(v, max),
-                        border: `1px solid ${v ? 'transparent' : C.border}`,
-                      }}
-                    />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <>
+      <div className="analyticsIntelHeader">
+        <div>
+          <span className="analyticsIntelEyebrow">SEND-TIME INTELLIGENCE</span>
+          <h2>Best historical send windows</h2>
+          <p>
+            Engagement is assigned back to the hour of the matched delivered event using recipient +
+            message/notification identity. This measures send-window performance rather than the hour
+            when somebody happened to open or click.
+          </p>
+        </div>
+        <div className={`analyticsCoveragePill ${matchRate < 80 ? 'warning' : ''}`}>
+          <span>Attribution coverage</span>
+          <strong>{matchRate.toFixed(0)}%</strong>
+        </div>
       </div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginTop: 12,
-          fontSize: 11,
-          color: C.mid,
-          flexWrap: 'wrap',
-        }}
+
+      <div className="analyticsMiniStatGrid">
+        <MiniStat
+          label={`Best ${label.toLowerCase()} slot`}
+          value={bestCell ? `${DOW[bestCell.d]} ${hh(bestCell.h)}` : '—'}
+          detail={bestCell ? `${metric === 'delivered' ? fmt(bestCell.delivered) : `${metricValue(bestCell).toFixed(1)}%`} · ${fmt(bestCell.delivered)} delivered` : 'No attributed delivery events'}
+          tone="green"
+          icon={<ClockIcon />}
+        />
+        <MiniStat
+          label="Best day overall"
+          value={bestDay?.day || '—'}
+          detail={bestDay ? `${metric === 'delivered' ? fmt(bestDay.delivered) : `${bestDay[metric].toFixed(1)}%`} ${label.toLowerCase()}` : 'No data'}
+          tone="blue"
+          icon={<CalendarIcon />}
+        />
+        <MiniStat
+          label="Attributed deliveries"
+          value={fmt(attribution.attributed)}
+          detail={`${fmt(attribution.identities)} message-recipient identities observed`}
+          tone="purple"
+          icon={<TargetIcon />}
+        />
+        <MiniStat
+          label="Unmatched events"
+          value={fmt(attribution.unmatchedEvents)}
+          detail="Events missing a usable message/recipient identity"
+          tone={attribution.unmatchedEvents ? 'amber' : 'green'}
+          icon={<AlertIcon />}
+        />
+      </div>
+
+      <Card
+        title="7 × 24 send-time heatmap"
+        sub={`${label} by delivered-event send window · viewer local time · cells with fewer than 10 delivered messages are excluded from best-slot ranking when possible`}
       >
-        <span>0</span>
-        {[0.05, 0.2, 0.4, 0.6, 0.8, 1].map((t) => (
-          <div
-            key={t}
-            style={{
-              width: 26,
-              height: 12,
-              borderRadius: 3,
-              background: heatColor(t * max, max),
-              border: `1px solid ${C.border}`,
-            }}
-          />
-        ))}
-        <span>{fmt(max)}</span>
-        <span style={{ marginLeft: 16 }}>
-          Peak:{' '}
-          <strong>
-            {DOW[bestCell.d]} {hh(bestCell.h)}
-          </strong>{' '}
-          ({fmt(bestCell.v)}) · busiest hour overall <strong>{hh(bestHour)}</strong>
+        <TimingMetricPicker metric={metric} setMetric={setMetric} />
+        <div className="analyticsHeatmapWrap">
+          <table className="analyticsHeatmapTable">
+            <thead>
+              <tr>
+                <th />
+                {Array.from({ length: 24 }, (_, h) => <th key={h}>{h % 2 === 0 ? String(h).padStart(2, '0') : ''}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {grid.map((row, d) => (
+                <tr key={DOW[d]}>
+                  <td>{DOW[d]}</td>
+                  {row.map((cell, h) => {
+                    const value = metricValue(cell)
+                    const display = metric === 'delivered' ? fmt(value) : `${value.toFixed(1)}%`
+                    return (
+                      <td key={h}>
+                        <div
+                          className={`analyticsHeatCell ${cell.delivered > 0 ? 'hasData' : ''}`}
+                          style={{ background: heatColor(value, max) }}
+                          title={`${DOW[d]} ${hh(h)} · ${display} ${label.toLowerCase()} · ${fmt(cell.delivered)} delivered · ${fmt(cell.opens)} opened · ${fmt(cell.clicks)} clicked`}
+                        >
+                          {cell.delivered >= 10 && <span>{metric === 'delivered' ? fmt(value) : value.toFixed(0)}</span>}
+                        </div>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="analyticsHeatLegend">
+          <span>Low</span>
+          {[0.08, 0.22, 0.4, 0.6, 0.8, 1].map((t) => <i key={t} style={{ background: heatColor(t * max, max) }} />)}
+          <span>High</span>
+          {bestCell && (
+            <strong>
+              Peak: {DOW[bestCell.d]} {hh(bestCell.h)} · {metric === 'delivered' ? fmt(bestCell.delivered) : `${metricValue(bestCell).toFixed(1)}%`}
+            </strong>
+          )}
+        </div>
+      </Card>
+
+      <Card title="Day-of-week benchmark" sub="Aggregated from the same message-level send-time attribution">
+        <div className="analyticsTimingDayGrid">
+          {byDay.map((item) => (
+            <div key={item.day} className={bestDay?.day === item.day ? 'best' : ''}>
+              <span>{item.day}</span>
+              <strong>{metric === 'delivered' ? fmt(item.delivered) : `${item[metric].toFixed(1)}%`}</strong>
+              <small>{fmt(item.delivered)} delivered</small>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div className="analyticsMethodNote">
+        <AlertIcon />
+        <span>
+          This is historical association, not a causal recommendation. Audience mix, campaign type,
+          timezone and content can all influence the apparent best window. Use the heatmap as a test
+          hypothesis and validate with controlled scheduling experiments.
         </span>
       </div>
-    </Card>
+    </>
   )
 }
+
+function buildSendTimeAttribution(events) {
+  const identities = new Map()
+  let unmatchedEvents = 0
+
+  for (const event of events) {
+    const providerId = event.messageId || event.notificationId || event.templateKey
+    const recipient = event.recipient
+    if (!providerId || !recipient) {
+      unmatchedEvents += 1
+      continue
+    }
+    const key = `${event.channel || ''}|${providerId}|${recipient}`
+    if (!identities.has(key)) identities.set(key, { deliveredAt: null, opened: false, clicked: false })
+    const item = identities.get(key)
+    if (event.eventType === 'delivered') {
+      const ts = new Date(event.timestamp).getTime()
+      if (Number.isFinite(ts) && (!item.deliveredAt || ts < item.deliveredAt)) item.deliveredAt = ts
+    } else if (event.eventType === 'opened') {
+      item.opened = true
+    } else if (event.eventType === 'clicked') {
+      item.clicked = true
+    }
+  }
+
+  const grid = Array.from({ length: 7 }, (_, d) =>
+    Array.from({ length: 24 }, (_, h) => ({ d, h, delivered: 0, opens: 0, clicks: 0, openRate: 0, ctr: 0 })),
+  )
+  let attributed = 0
+  for (const item of identities.values()) {
+    if (!item.deliveredAt) continue
+    const date = new Date(item.deliveredAt)
+    const d = (date.getDay() + 6) % 7
+    const h = date.getHours()
+    const cell = grid[d][h]
+    cell.delivered += 1
+    if (item.opened) cell.opens += 1
+    if (item.clicked) cell.clicks += 1
+    attributed += 1
+  }
+
+  for (const row of grid) {
+    for (const cell of row) {
+      cell.openRate = pctNum(cell.opens, cell.delivered)
+      cell.ctr = pctNum(cell.clicks, cell.delivered)
+    }
+  }
+
+  return { grid, attributed, identities: identities.size, unmatchedEvents }
+}
+
+function buildDowPerformanceFromRows(rows) {
+  const out = DOW.map((day) => ({ day, sent: 0, delivered: 0, opens: 0, clicks: 0, openRate: 0, ctr: 0 }))
+  for (const row of rows) {
+    const date = new Date(row.date)
+    if (Number.isNaN(date.getTime())) continue
+    const index = (date.getDay() + 6) % 7
+    out[index].sent += row.sent || 0
+    out[index].delivered += row.delivered || 0
+    out[index].opens += row.uniqueOpens || 0
+    out[index].clicks += row.uniqueClicks || 0
+  }
+  for (const item of out) {
+    item.openRate = pctNum(item.opens, item.delivered)
+    item.ctr = pctNum(item.clicks, item.delivered)
+  }
+  return out
+}
+
