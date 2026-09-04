@@ -77,6 +77,8 @@ export interface Config {
     'template-mappings': TemplateMapping;
     'notifications-cache': NotificationsCache;
     campaigns: Campaign;
+    'analytics-saved-views': AnalyticsSavedView;
+    'analytics-audit-logs': AnalyticsAuditLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -94,6 +96,8 @@ export interface Config {
     'template-mappings': TemplateMappingsSelect<false> | TemplateMappingsSelect<true>;
     'notifications-cache': NotificationsCacheSelect<false> | NotificationsCacheSelect<true>;
     campaigns: CampaignsSelect<false> | CampaignsSelect<true>;
+    'analytics-saved-views': AnalyticsSavedViewsSelect<false> | AnalyticsSavedViewsSelect<true>;
+    'analytics-audit-logs': AnalyticsAuditLogsSelect<false> | AnalyticsAuditLogsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -414,7 +418,11 @@ export interface Campaign {
    */
   name: string;
   description?: string | null;
-  status?: ('active' | 'paused' | 'archived') | null;
+  /**
+   * Internal campaign notes and handoff context.
+   */
+  notes?: string | null;
+  status?: ('draft' | 'active' | 'paused' | 'completed' | 'archived') | null;
   /**
    * Assign one or more templates to this campaign. A template can be in several campaigns.
    */
@@ -423,6 +431,48 @@ export interface Campaign {
    * Optional hex color for charts, e.g. #075c8f.
    */
   color?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "analytics-saved-views".
+ */
+export interface AnalyticsSavedView {
+  id: number;
+  name: string;
+  owner: number | User;
+  visibility?: ('personal' | 'team') | null;
+  tab?: string | null;
+  days?: number | null;
+  campaign?: string | null;
+  channel?: string | null;
+  region?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "analytics-audit-logs".
+ */
+export interface AnalyticsAuditLog {
+  id: number;
+  action: 'created' | 'updated' | 'archived' | 'restored' | 'duplicated' | 'deleted' | 'view_saved' | 'view_deleted';
+  entityType: string;
+  entityId?: string | null;
+  entityName?: string | null;
+  summary: string;
+  actor?: (number | null) | User;
+  actorName?: string | null;
+  detail?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -489,6 +539,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'campaigns';
         value: number | Campaign;
+      } | null)
+    | ({
+        relationTo: 'analytics-saved-views';
+        value: number | AnalyticsSavedView;
+      } | null)
+    | ({
+        relationTo: 'analytics-audit-logs';
+        value: number | AnalyticsAuditLog;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -724,9 +782,42 @@ export interface NotificationsCacheSelect<T extends boolean = true> {
 export interface CampaignsSelect<T extends boolean = true> {
   name?: T;
   description?: T;
+  notes?: T;
   status?: T;
   templates?: T;
   color?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "analytics-saved-views_select".
+ */
+export interface AnalyticsSavedViewsSelect<T extends boolean = true> {
+  name?: T;
+  owner?: T;
+  visibility?: T;
+  tab?: T;
+  days?: T;
+  campaign?: T;
+  channel?: T;
+  region?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "analytics-audit-logs_select".
+ */
+export interface AnalyticsAuditLogsSelect<T extends boolean = true> {
+  action?: T;
+  entityType?: T;
+  entityId?: T;
+  entityName?: T;
+  summary?: T;
+  actor?: T;
+  actorName?: T;
+  detail?: T;
   updatedAt?: T;
   createdAt?: T;
 }

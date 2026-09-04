@@ -15,6 +15,8 @@ import Events from './collections/Events'
 import AnalyticsDaily from './collections/AnalyticsDaily'
 import { TemplateMappings, NotificationsCache } from './collections/AnalyticsSupport'
 import Campaigns from './collections/Campaigns'
+import AnalyticsSavedViews from './collections/AnalyticsSavedViews'
+import AnalyticsAuditLogs from './collections/AnalyticsAuditLogs'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -38,6 +40,8 @@ export default buildConfig({
     TemplateMappings,
     NotificationsCache,
     Campaigns,
+    AnalyticsSavedViews,
+    AnalyticsAuditLogs,
   ],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',

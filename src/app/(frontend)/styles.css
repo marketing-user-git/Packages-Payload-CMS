@@ -259,7 +259,7 @@ svg {
 .loginSubtitle {
   margin-bottom: 28px;
 
-  font-size: 14px;
+  font-size: 13px;
 
   color: #71818e;
 }
@@ -273,7 +273,7 @@ svg {
 
   margin-bottom: 7px;
 
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
 
   color: #60717f;
@@ -290,7 +290,7 @@ svg {
 
   outline: none;
 
-  font-size: 15px;
+  font-size: 14px;
 
   color: var(--input-text);
 
@@ -341,7 +341,7 @@ svg {
 
   cursor: pointer;
 
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 700;
 
   color: #6f7f8d;
@@ -361,7 +361,7 @@ svg {
   border: 1px solid rgba(217, 59, 59, 0.16);
   border-radius: 9px;
 
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.4;
 
   color: var(--danger);
@@ -380,7 +380,7 @@ svg {
 
   cursor: pointer;
 
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
 
   color: #ffffff;
@@ -583,7 +583,7 @@ svg {
 .yearsLabel {
   margin-bottom: 4px;
 
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
 
   font-weight: 800;
@@ -602,7 +602,7 @@ svg {
 
   gap: 8px;
 
-  font-size: 15px;
+  font-size: 14px;
 
   color: rgba(255, 255, 255, 0.74);
 }
@@ -622,7 +622,7 @@ svg {
 
   cursor: pointer;
 
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
 
   color: var(--blue-soft);
@@ -796,7 +796,7 @@ svg {
 }
 
 .cardTag {
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1;
 
   font-weight: 800;
@@ -1201,7 +1201,7 @@ svg {
 .cardDesc {
   max-width: 430px;
 
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.55;
 
   color: rgba(255, 255, 255, 0.69);
@@ -1271,7 +1271,7 @@ svg {
 .trustText strong {
   margin-bottom: 3px;
 
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.15;
 
   font-weight: 700;
@@ -1280,7 +1280,7 @@ svg {
 }
 
 .trustText span {
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1.2;
 
   color: rgba(255, 255, 255, 0.46);
@@ -1349,7 +1349,7 @@ svg {
   }
 
   .cardDesc {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .trustRow {
@@ -1411,17 +1411,17 @@ svg {
   .yearsLabel {
     margin-bottom: 3px;
 
-    font-size: 12px;
+    font-size: 10px;
   }
 
   .pickerUser {
     align-self: flex-end;
 
-    font-size: 14px;
+    font-size: 12px;
   }
 
   .signOutLink {
-    font-size: 14px;
+    font-size: 12px;
   }
 
   .pickerMain {
@@ -1436,7 +1436,7 @@ svg {
   .mainSubtitle {
     margin-bottom: 24px;
 
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .cardsGrid {
@@ -1460,7 +1460,7 @@ svg {
   }
 
   .cardDesc {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .trustRow {
@@ -1520,7 +1520,7 @@ svg {
   }
 
   .mainSubtitle {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .appCard {
@@ -1535,7 +1535,7 @@ svg {
   }
 
   .cardTag {
-    font-size: 12px;
+    font-size: 9px;
   }
 
   .packagePin {
@@ -1699,7 +1699,7 @@ svg {
   border: 1px solid rgba(132, 197, 97, 0.25);
   border-radius: 12px;
 
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 800;
 
   color: #b9ef8d;
@@ -1717,7 +1717,7 @@ svg {
 .userName {
   display: block;
 
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.25;
 
   font-weight: 700;
@@ -1730,7 +1730,7 @@ svg {
 
   margin-top: 2px;
 
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.2;
 
   color: rgba(255, 255, 255, 0.39);
@@ -1798,7 +1798,7 @@ svg {
 
   margin-bottom: 14px;
 
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1;
 
   font-weight: 800;
@@ -1841,7 +1841,7 @@ svg {
 .mainSubtitle {
   margin: 10px 0 0;
 
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.5;
 
   color: rgba(211, 225, 236, 0.58);
@@ -1994,7 +1994,7 @@ svg {
 }
 
 .cardTag {
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1;
 
   font-weight: 800;
@@ -2092,7 +2092,7 @@ svg {
 .cardDesc {
   max-width: 370px;
 
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
 
   color: rgba(200, 217, 230, 0.55);
@@ -2113,7 +2113,7 @@ svg {
 
   margin-top: auto;
 
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1;
 
   font-weight: 650;
@@ -2197,7 +2197,7 @@ svg {
 .trustText strong {
   margin: 0 0 2px;
 
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1.2;
 
   font-weight: 700;
@@ -2206,7 +2206,7 @@ svg {
 }
 
 .trustText span {
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.2;
 
   color: rgba(188, 207, 222, 0.37);
@@ -2235,7 +2235,7 @@ svg {
 
   border-top: 1px solid rgba(255, 255, 255, 0.055);
 
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1;
 
   color: rgba(197, 215, 228, 0.24);
@@ -2629,7 +2629,7 @@ svg {
   border-radius: 8px;
   color: var(--an-muted);
   background: color-mix(in srgb, var(--an-panel) 75%, transparent);
-  font-size: 14px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -2650,7 +2650,7 @@ svg {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -2672,7 +2672,7 @@ svg {
 }
 
 .analyticsUserName {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--an-text-soft);
 }
 
@@ -2685,7 +2685,7 @@ svg {
   color: #aee78c;
   background: rgba(132, 197, 97, 0.16);
   border: 1px solid rgba(132, 197, 97, 0.22);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -2736,7 +2736,7 @@ svg {
   background: transparent;
   cursor: pointer;
   text-align: left;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 540;
   transition: 0.18s ease;
 }
@@ -2794,7 +2794,7 @@ svg {
   border: 1px solid var(--an-border-strong);
   border-radius: 50%;
   color: var(--an-text-soft);
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -2805,11 +2805,11 @@ svg {
 .analyticsHelpCard strong {
   margin: 1px 0 5px;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
 }
 .analyticsHelpCard span {
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.45;
 }
 .analyticsHelpCard > svg {
@@ -2885,7 +2885,7 @@ svg {
   background: transparent;
   color: var(--an-text-soft);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
 }
 .analyticsFilter select option {
   color: #1d3344;
@@ -2894,7 +2894,7 @@ svg {
 
 .analyticsTimeZone,
 .analyticsRowMeta {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--an-muted);
   white-space: nowrap;
 }
@@ -2917,7 +2917,7 @@ svg {
   background: rgba(34, 168, 255, 0.06);
   color: #62c3ff;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
 }
 .analyticsExportButton:disabled {
@@ -2953,7 +2953,7 @@ svg {
   color: var(--an-text-soft);
   text-align: left;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 11px;
 }
 .analyticsExportMenu button:hover {
   background: var(--an-panel-hover);
@@ -2994,11 +2994,11 @@ svg {
 }
 .analyticsSummaryText strong {
   color: #35b8ff;
-  font-size: 14px;
+  font-size: 12px;
 }
 .analyticsSummaryText span {
   color: var(--an-text-soft);
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -3100,17 +3100,17 @@ svg {
 }
 .analyticsKpiLabel {
   margin-top: 6px;
-  font-size: 14px;
+  font-size: 11px;
   color: var(--an-text-soft);
 }
 .analyticsKpiSub {
   margin-top: 2px;
   min-height: 13px;
-  font-size: 12px;
+  font-size: 9px;
   color: var(--an-muted);
 }
 .analyticsDelta {
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 750;
   white-space: nowrap;
 }
@@ -3151,13 +3151,13 @@ svg {
 }
 .analyticsCardTitle {
   color: var(--an-text);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 760;
 }
 .analyticsCardSub {
   margin-top: 3px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.4;
 }
 .analyticsCardActions {
@@ -3190,7 +3190,7 @@ svg {
   border-radius: 8px;
   color: var(--an-text-soft);
   background: var(--an-input);
-  font-size: 14px;
+  font-size: 11px;
 }
 .chartViewButton {
   width: 34px;
@@ -3222,7 +3222,7 @@ svg {
 .analyticsTooltipLabel {
   margin-bottom: 7px;
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 .analyticsTooltipRow {
@@ -3231,7 +3231,7 @@ svg {
   align-items: center;
   gap: 7px;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: 10px;
 }
 .analyticsTooltipDot {
   width: 6px;
@@ -3284,11 +3284,11 @@ svg {
 .analyticsFeature strong {
   margin-bottom: 3px;
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 10px;
 }
 .analyticsFeature span {
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1.35;
 }
 .analyticsFeature > svg {
@@ -3316,7 +3316,7 @@ svg {
   background: var(--an-input);
   color: var(--an-muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 650;
 }
 .analyticsSegmentButton.active {
@@ -3328,7 +3328,7 @@ svg {
   margin-left: auto;
   align-self: center;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .analyticsWarning {
@@ -3341,7 +3341,7 @@ svg {
   border-radius: 9px;
   background: rgba(242, 169, 59, 0.08);
   color: #f5bf69;
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1.5;
 }
 .analyticsWarning svg {
@@ -3356,7 +3356,7 @@ svg {
   padding: 30px;
   text-align: center;
   color: var(--an-muted);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .analyticsLoadingScreen {
@@ -3383,7 +3383,7 @@ svg {
   padding: 6px 0 12px;
   color: var(--an-muted-2);
   text-align: center;
-  font-size: 12px;
+  font-size: 9px;
 }
 
 /* Existing inline tables get theme colors through C vars, plus a little polish */
@@ -3465,7 +3465,7 @@ svg {
     flex-wrap: wrap;
   }
   .analyticsProductName {
-    font-size: 15px;
+    font-size: 14px;
   }
   .analyticsScopeBadge {
     display: none;
@@ -3631,7 +3631,7 @@ svg {
   max-width: 760px;
   margin: 0;
   color: var(--an-muted);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -3640,7 +3640,7 @@ svg {
   align-items: center;
   gap: 7px;
   color: #84c561;
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1;
   font-weight: 800;
   letter-spacing: 1.8px;
@@ -3672,7 +3672,7 @@ svg {
   display: block;
   margin-bottom: 4px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -3681,7 +3681,7 @@ svg {
 .analyticsBenchmarkPill strong,
 .analyticsCoveragePill strong {
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.25;
 }
 
@@ -3781,7 +3781,7 @@ svg {
   display: block;
   margin-bottom: 5px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1.2;
   font-weight: 750;
   letter-spacing: 0.55px;
@@ -3803,7 +3803,7 @@ svg {
   margin: 6px 0 0;
   overflow: hidden;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.35;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -3846,14 +3846,14 @@ svg {
   display: block;
   margin-bottom: 4px;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1.3;
 }
 
 .analyticsInsightCard p {
   margin: 0;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.45;
 }
 
@@ -3909,7 +3909,7 @@ svg {
   padding: 10px 12px;
   border-bottom: 1px solid var(--an-border-strong);
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.45px;
   text-align: right;
@@ -3926,7 +3926,7 @@ svg {
   padding: 11px 12px;
   border-bottom: 1px solid var(--an-border);
   color: var(--an-text-soft);
-  font-size: 14px;
+  font-size: 11px;
   text-align: right;
   white-space: nowrap;
 }
@@ -3964,14 +3964,14 @@ svg {
   max-width: 200px;
   overflow: hidden;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
   text-overflow: ellipsis;
 }
 
 .analyticsCampaignName span {
   margin-top: 2px;
   color: var(--an-muted-2);
-  font-size: 12px;
+  font-size: 9px;
 }
 
 .analyticsStatusBadge {
@@ -3981,7 +3981,7 @@ svg {
   padding: 0 8px;
   border: 1px solid var(--an-border);
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 750;
   white-space: nowrap;
 }
@@ -4010,7 +4010,7 @@ svg {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 750;
   white-space: nowrap;
 }
@@ -4096,12 +4096,12 @@ svg {
 
 .analyticsHealthRing span {
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .analyticsHealthScoreCopy > span {
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 1.3px;
 }
@@ -4117,7 +4117,7 @@ svg {
   max-width: 500px;
   margin: 0 0 10px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.5;
 }
 
@@ -4136,7 +4136,7 @@ svg {
   gap: 12px;
   margin-bottom: 6px;
   color: var(--an-text-soft);
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .analyticsHealthDimensionTop strong.good {
@@ -4192,12 +4192,12 @@ svg {
 }
 .analyticsSuccessBanner strong {
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
 }
 .analyticsSuccessBanner span {
   margin-top: 2px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
 }
 
 /* Data Quality */
@@ -4238,7 +4238,7 @@ svg {
 }
 .analyticsQualityScore b {
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
 }
 
 .analyticsQualityIssueGrid {
@@ -4293,7 +4293,7 @@ svg {
 }
 .analyticsQualityIssueTop strong {
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
 }
 .analyticsQualityIssueTop span {
   min-width: 25px;
@@ -4301,14 +4301,14 @@ svg {
   border-radius: 999px;
   color: var(--an-text-soft);
   background: var(--an-panel-2);
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 800;
   text-align: center;
 }
 .analyticsQualityIssue p {
   margin: 5px 0 0;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1.45;
 }
 
@@ -4344,7 +4344,7 @@ svg {
   gap: 8px;
   min-height: 72px;
   color: #84c561;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 @media (max-width: 1180px) {
@@ -4403,7 +4403,7 @@ svg {
   display: block;
   margin-top: 4px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 600;
 }
 
@@ -4432,7 +4432,7 @@ svg {
 
 .analyticsBenchmarkMetricTop span {
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -4482,7 +4482,7 @@ svg {
 
 .analyticsBenchmarkMetric small {
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
 }
 
 .analyticsTextButton {
@@ -4492,7 +4492,7 @@ svg {
   cursor: pointer;
   color: var(--an-blue-soft);
   background: transparent;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -4522,7 +4522,7 @@ svg {
   cursor: pointer;
   color: var(--an-muted);
   background: var(--an-panel-soft);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   transition: 0.16s ease;
 }
@@ -4563,14 +4563,14 @@ svg {
 .analyticsComparisonCallouts small {
   display: block;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
 }
 .analyticsComparisonCallouts strong {
   display: block;
   overflow: hidden;
   margin: 4px 0;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4597,7 +4597,7 @@ svg {
   cursor: pointer;
   color: var(--an-blue-soft);
   background: var(--an-panel-soft);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 750;
   transition: 0.16s ease;
 }
@@ -4652,7 +4652,7 @@ svg {
 .analyticsDrillTitle p {
   margin: 0;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 10px;
 }
 .analyticsDrillScore {
   display: grid;
@@ -4661,7 +4661,7 @@ svg {
 }
 .analyticsDrillScore > span {
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
@@ -4690,7 +4690,7 @@ svg {
 .analyticsVsMetric > small {
   display: block;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
 }
 .analyticsVsMetric > strong {
   display: block;
@@ -4721,7 +4721,7 @@ svg {
   cursor: pointer;
   color: var(--an-muted);
   background: transparent;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 .analyticsAudienceMode button.active {
@@ -4749,12 +4749,12 @@ svg {
   display: block;
 }
 .analyticsCoverageNotice strong {
-  font-size: 14px;
+  font-size: 11px;
 }
 .analyticsCoverageNotice span {
   margin-top: 2px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1.4;
 }
 .analyticsUnknownRow {
@@ -4801,12 +4801,12 @@ svg {
 }
 .analyticsOutlierItem strong {
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 10px;
 }
 .analyticsOutlierItem span {
   margin-top: 2px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1.35;
 }
 
@@ -4849,7 +4849,7 @@ svg {
   border-radius: 8px;
   color: #22a8ff;
   background: rgba(34, 168, 255, 0.1);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 850;
 }
 .analyticsIntelFeedItem.critical .analyticsIntelFeedSeverity {
@@ -4887,13 +4887,13 @@ svg {
 .analyticsIntelFeedBody > strong {
   display: block;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1.25;
 }
 .analyticsIntelFeedBody p {
   margin: 4px 0 0;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1.4;
 }
 .analyticsIntelFeedAction {
@@ -4913,7 +4913,7 @@ svg {
 .analyticsAlertCountPill > span {
   display: block;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.7px;
 }
@@ -4991,17 +4991,17 @@ svg {
 .analyticsActiveAlertBody strong {
   display: block;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
 }
 .analyticsActiveAlertBody p {
   margin: 3px 0 0;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1.35;
 }
 .analyticsActiveAlertValue {
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -5023,7 +5023,7 @@ svg {
   display: block;
   margin-bottom: 7px;
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 .analyticsAlertRule > small {
@@ -5050,13 +5050,13 @@ svg {
   outline: 0;
   color: var(--an-text);
   background: transparent;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 700;
 }
 .analyticsAlertRuleInput em {
   padding: 0 9px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   font-style: normal;
 }
 .analyticsHealthyState {
@@ -5074,11 +5074,11 @@ svg {
 }
 .analyticsHealthyState strong {
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 12px;
 }
 .analyticsHealthyState span {
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
 }
 
 @media (max-width: 1180px) {
@@ -5169,7 +5169,7 @@ svg {
 }
 .analyticsSectionBar > div:first-child > span {
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 800;
 }
 .analyticsSectionBar > div:first-child > small {
@@ -5379,13 +5379,13 @@ svg {
   border-radius: 8px;
   color: var(--an-blue-soft);
   background: rgba(34, 168, 255, 0.1);
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 850;
 }
 .analyticsExecutiveSignal strong {
   display: block;
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 10px;
 }
 .analyticsExecutiveSignal p {
   margin: 3px 0 0;
@@ -5428,7 +5428,7 @@ svg {
   display: block;
   margin-top: 5px;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 13px;
 }
 .analyticsLeadershipCard p {
   margin: 4px 0 0;
@@ -5475,7 +5475,7 @@ svg {
 .analyticsBriefHeader strong {
   margin-top: 3px;
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 10px;
 }
 .analyticsBriefMetrics {
   display: grid;
@@ -5508,13 +5508,13 @@ svg {
 .analyticsBriefNarrative h3 {
   margin: 0 0 7px;
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 10px;
 }
 .analyticsBriefNarrative ul {
   margin: 0;
   padding-left: 17px;
   color: var(--an-muted);
-  font-size: 12px;
+  font-size: 9px;
   line-height: 1.55;
 }
 .analyticsBriefNarrative li + li {
@@ -5599,7 +5599,7 @@ svg {
 .analyticsCalendarSummary strong {
   margin-top: 3px;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 13px;
 }
 .analyticsCalendarGrid {
   display: grid;
@@ -5834,7 +5834,7 @@ svg {
 .analyticsTemplateLibraryBody h3 {
   margin: 8px 0 3px;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1.25;
 }
 .analyticsTemplateLibraryBody p {
@@ -5875,7 +5875,7 @@ svg {
 .analyticsTemplateLibraryMetrics strong {
   margin-top: 2px;
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 9px;
 }
 
 /* Send-time intelligence */
@@ -5898,7 +5898,7 @@ svg {
 }
 .analyticsDowHeatCell > div strong {
   color: var(--an-text);
-  font-size: 12px;
+  font-size: 10px;
   mix-blend-mode: difference;
 }
 .analyticsDowHeatCell > span {
@@ -6018,7 +6018,7 @@ svg {
 .analyticsTimingDayGrid strong {
   margin-top: 4px;
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 12px;
 }
 .analyticsTimingDayGrid small {
   margin-top: 2px;
@@ -6046,7 +6046,7 @@ svg {
   outline: 0;
   color: var(--an-text);
   background: var(--an-input);
-  font-size: 12px;
+  font-size: 9px;
 }
 .analyticsJourneyStatusGrid {
   display: grid;
@@ -6125,7 +6125,7 @@ svg {
 }
 .analyticsJourneyMilestoneTop b {
   color: var(--an-text);
-  font-size: 14px;
+  font-size: 11px;
 }
 .analyticsJourneyMilestoneTop small {
   margin-top: 1px;
@@ -6290,4 +6290,2086 @@ svg {
     flex: 0 0 auto;
     overflow: visible;
   }
+}
+
+/* ========================================================================== 
+   ANALYTICS — NAVIGATION GROUPING + IN-APP CAMPAIGN BUILDER
+   ========================================================================== */
+
+/* Group the large analytics surface into four predictable jobs instead of
+   presenting eleven peer-level destinations. */
+.analyticsNav {
+  gap: 15px;
+}
+
+.analyticsNavGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.analyticsNavGroupLabel {
+  padding: 0 14px;
+  color: var(--an-muted-2);
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 1.45px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.analyticsNavGroupItems {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Campaign header action */
+.analyticsIntelHeaderActions {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.analyticsPrimaryButton,
+.analyticsSecondaryButton {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 750;
+  transition: 0.18s ease;
+}
+
+.analyticsPrimaryButton {
+  border: 1px solid rgba(132, 197, 97, 0.45);
+  color: #f8fff4;
+  background: linear-gradient(135deg, #6aad49, #84c561);
+  box-shadow: 0 8px 20px rgba(106, 173, 73, 0.18);
+}
+
+.analyticsPrimaryButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(185, 239, 141, 0.72);
+  box-shadow: 0 11px 24px rgba(106, 173, 73, 0.24);
+}
+
+.analyticsPrimaryButton:disabled,
+.analyticsSecondaryButton:disabled,
+.analyticsTextButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
+.analyticsSecondaryButton {
+  border: 1px solid var(--an-border);
+  color: var(--an-text-soft);
+  background: var(--an-panel-2);
+}
+
+.analyticsSecondaryButton:hover:not(:disabled) {
+  color: var(--an-text);
+  border-color: var(--an-border-strong);
+  background: var(--an-panel-hover);
+}
+
+/* Builder modal */
+.analyticsModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(1, 8, 17, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: analyticsModalFade 0.16s ease both;
+}
+
+.analyticsShell[data-theme='light'] .analyticsModalBackdrop {
+  background: rgba(20, 40, 54, 0.44);
+}
+
+@keyframes analyticsModalFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.analyticsCampaignBuilder {
+  width: min(1120px, 96vw);
+  max-height: min(880px, calc(100vh - 56px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--an-border-strong);
+  border-radius: 18px;
+  color: var(--an-text);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 168, 255, 0.08), transparent 28%), var(--an-bg-2);
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.42);
+  animation: analyticsModalRise 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.analyticsShell[data-theme='light'] .analyticsCampaignBuilder {
+  box-shadow: 0 28px 70px rgba(30, 61, 80, 0.2);
+}
+
+@keyframes analyticsModalRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.analyticsBuilderHeader {
+  flex: 0 0 auto;
+  min-height: 96px;
+  padding: 22px 24px 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--an-border);
+  background: color-mix(in srgb, var(--an-panel) 72%, transparent);
+}
+
+.analyticsBuilderHeader h2 {
+  margin: 6px 0 5px;
+  font-size: 22px;
+  line-height: 1.15;
+  letter-spacing: -0.45px;
+  color: var(--an-text);
+}
+
+.analyticsBuilderHeader p {
+  max-width: 690px;
+  margin: 0;
+  color: var(--an-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.analyticsModalClose {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--an-border);
+  border-radius: 9px;
+  color: var(--an-muted);
+  background: var(--an-panel-2);
+  cursor: pointer;
+  transition: 0.16s ease;
+}
+
+.analyticsModalClose:hover:not(:disabled) {
+  color: var(--an-text);
+  border-color: var(--an-border-strong);
+  background: var(--an-panel-hover);
+}
+
+.analyticsBuilderForm {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.analyticsBuilderDetails {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 150px 150px;
+  gap: 12px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--an-border);
+  background: color-mix(in srgb, var(--an-bg-2) 84%, var(--an-panel));
+}
+
+.analyticsBuilderField {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.analyticsBuilderField > span {
+  color: var(--an-text-soft);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 750;
+}
+
+.analyticsBuilderField > span b {
+  color: #ff6f80;
+  font-weight: 850;
+}
+
+.analyticsBuilderField input:not([type='color']),
+.analyticsBuilderField select,
+.analyticsBuilderField textarea,
+.analyticsPickerSearch,
+.analyticsPickerTheme select {
+  width: 100%;
+  border: 1px solid var(--an-border);
+  border-radius: 9px;
+  outline: none;
+  color: var(--an-text);
+  background: var(--an-input);
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+.analyticsBuilderField input:not([type='color']),
+.analyticsBuilderField select {
+  height: 39px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+.analyticsBuilderField textarea {
+  min-height: 58px;
+  resize: vertical;
+  padding: 10px 11px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.analyticsBuilderField input:focus,
+.analyticsBuilderField select:focus,
+.analyticsBuilderField textarea:focus,
+.analyticsPickerSearch:focus-within,
+.analyticsPickerTheme select:focus {
+  border-color: rgba(34, 168, 255, 0.52);
+  box-shadow: 0 0 0 3px rgba(34, 168, 255, 0.08);
+}
+
+.analyticsBuilderField input::placeholder,
+.analyticsBuilderField textarea::placeholder,
+.analyticsPickerSearch input::placeholder {
+  color: var(--an-muted-2);
+}
+
+.analyticsBuilderFieldFull {
+  grid-column: 1 / -1;
+}
+
+.analyticsColorInput {
+  height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--an-border);
+  border-radius: 9px;
+  background: var(--an-input);
+}
+
+.analyticsColorInput input[type='color'] {
+  width: 31px;
+  height: 27px;
+  flex: 0 0 31px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: transparent;
+  cursor: pointer;
+}
+
+.analyticsColorInput input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.analyticsColorInput input[type='color']::-webkit-color-swatch {
+  border: 0;
+  border-radius: 5px;
+}
+.analyticsColorInput code {
+  color: var(--an-muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
+/* Template picker */
+.analyticsTemplatePicker {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 24px 0;
+  overflow: hidden;
+}
+
+.analyticsPickerHeading {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 13px;
+}
+
+.analyticsPickerHeading h3 {
+  margin: 0 0 4px;
+  color: var(--an-text);
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.analyticsPickerHeading p {
+  margin: 0;
+  color: var(--an-muted);
+  font-size: 11px;
+}
+
+.analyticsPickerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.analyticsPickerFilters {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 230px;
+  gap: 10px;
+}
+
+.analyticsPickerSearch {
+  height: 41px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--an-muted);
+}
+
+.analyticsPickerSearch input {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--an-text);
+  background: transparent;
+  font-size: 12px;
+}
+
+.analyticsPickerSearch > button {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--an-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.analyticsPickerSearch > button:hover {
+  color: var(--an-text);
+  background: var(--an-panel-hover);
+}
+
+.analyticsPickerTheme {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.analyticsPickerTheme > span {
+  color: var(--an-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.analyticsPickerTheme select {
+  height: 41px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.analyticsPickerMeta {
+  flex: 0 0 auto;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--an-muted-2);
+  font-size: 10px;
+}
+
+.analyticsPickerMeta strong {
+  color: #9bdd78;
+  font-size: 10px;
+}
+
+.analyticsFamilyList {
+  min-height: 180px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1px 2px 18px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--an-border-strong) transparent;
+}
+
+.analyticsFamilyGroup {
+  margin-bottom: 7px;
+  overflow: hidden;
+  border: 1px solid var(--an-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--an-panel) 66%, transparent);
+}
+
+.analyticsFamilyGroup.open {
+  border-color: var(--an-border-strong);
+}
+
+.analyticsFamilyHeader {
+  min-height: 50px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+}
+
+.analyticsFamilyCheck {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--an-border-strong);
+  border-radius: 6px;
+  color: #fff;
+  background: var(--an-input);
+  cursor: pointer;
+}
+
+.analyticsFamilyCheck.checked,
+.analyticsFamilyCheck.partial {
+  border-color: rgba(132, 197, 97, 0.5);
+  color: #f7fff3;
+  background: rgba(132, 197, 97, 0.82);
+}
+
+.analyticsFamilyCheck svg {
+  width: 14px;
+  height: 14px;
+}
+
+.analyticsFamilyCheck.partial span {
+  transform: translateY(-1px);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.analyticsFamilyToggle {
+  min-width: 0;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  color: var(--an-text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.analyticsFamilyToggle > div:first-child {
+  min-width: 0;
+}
+
+.analyticsFamilyToggle strong,
+.analyticsFamilyToggle span {
+  display: block;
+}
+
+.analyticsFamilyToggle strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--an-text-soft);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.analyticsFamilyToggle span {
+  margin-top: 3px;
+  color: var(--an-muted-2);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.analyticsFamilyCount {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--an-muted);
+}
+
+.analyticsFamilyCount b {
+  color: #8dce69;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.analyticsFamilyCount svg {
+  transition: transform 0.18s ease;
+}
+
+.analyticsFamilyGroup.open .analyticsFamilyCount svg {
+  transform: rotate(180deg);
+}
+
+.analyticsFamilyTemplates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 10px 10px 48px;
+  border-top: 1px solid var(--an-border);
+  background: color-mix(in srgb, var(--an-bg) 40%, transparent);
+}
+
+.analyticsTemplateChoice {
+  min-width: 0;
+  min-height: 49px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--an-text-soft);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+
+.analyticsTemplateChoice:hover {
+  border-color: var(--an-border);
+  background: var(--an-panel-hover);
+}
+
+.analyticsTemplateChoice.selected {
+  border-color: rgba(132, 197, 97, 0.28);
+  background: rgba(132, 197, 97, 0.07);
+}
+
+.analyticsTemplateCheckbox {
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--an-border-strong);
+  border-radius: 5px;
+  color: #fff;
+  background: var(--an-input);
+}
+
+.analyticsTemplateChoice.selected .analyticsTemplateCheckbox {
+  border-color: rgba(132, 197, 97, 0.58);
+  background: #75b94f;
+}
+
+.analyticsTemplateCheckbox svg {
+  width: 13px;
+  height: 13px;
+}
+
+.analyticsTemplateChoiceCopy {
+  min-width: 0;
+}
+
+.analyticsTemplateChoiceCopy strong,
+.analyticsTemplateChoiceCopy code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analyticsTemplateChoiceCopy strong {
+  color: var(--an-text-soft);
+  font-size: 10px;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+.analyticsTemplateChoiceCopy code {
+  margin-top: 3px;
+  color: var(--an-muted-2);
+  font-family: var(--font-mono, monospace);
+  font-size: 8px;
+}
+
+.analyticsTemplateThemeBadge {
+  max-width: 105px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 6px;
+  border: 1px solid var(--an-border);
+  border-radius: 999px;
+  color: var(--an-muted);
+  background: var(--an-panel-2);
+  font-size: 8px;
+}
+
+.analyticsSelectedSummary {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 105px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 7px 0 9px;
+  border-top: 1px solid var(--an-border);
+}
+
+.analyticsSelectedSummary > span {
+  color: var(--an-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.analyticsSelectedSummary > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.analyticsSelectedSummary button {
+  min-width: 0;
+  max-width: 175px;
+  height: 25px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(132, 197, 97, 0.22);
+  border-radius: 7px;
+  color: #9bd878;
+  background: rgba(132, 197, 97, 0.06);
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.analyticsSelectedSummary button svg {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+}
+
+.analyticsSelectedSummary small {
+  flex: 0 0 auto;
+  color: var(--an-muted);
+  font-size: 9px;
+}
+
+.analyticsBuilderError {
+  flex: 0 0 auto;
+  margin: 0 24px 9px;
+  padding: 9px 11px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid rgba(255, 77, 103, 0.24);
+  border-radius: 8px;
+  color: #ff8b9a;
+  background: rgba(255, 77, 103, 0.07);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.analyticsBuilderError svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.analyticsBuilderFooter {
+  flex: 0 0 auto;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--an-border);
+  background: color-mix(in srgb, var(--an-panel) 74%, transparent);
+}
+
+.analyticsBuilderFooter > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.analyticsBuilderFooter > div:first-child strong {
+  color: #8fd16b;
+  font-size: 15px;
+}
+
+.analyticsBuilderFooter > div:first-child span {
+  color: var(--an-muted);
+  font-size: 10px;
+}
+
+.analyticsBuilderFooterActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.analyticsButtonSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: analyticsSpin 0.7s linear infinite;
+}
+
+/* Light-mode builder polish */
+.analyticsShell[data-theme='light'] .analyticsPrimaryButton {
+  color: #fff;
+}
+
+.analyticsShell[data-theme='light'] .analyticsFamilyCheck.checked,
+.analyticsShell[data-theme='light'] .analyticsFamilyCheck.partial,
+.analyticsShell[data-theme='light'] .analyticsTemplateChoice.selected .analyticsTemplateCheckbox {
+  color: #fff;
+}
+
+/* The sidebar collapses to icon-only on medium widths, so section labels stop
+   adding vertical noise there. */
+@media (max-width: 1050px) {
+  .analyticsNav {
+    gap: 8px;
+  }
+
+  .analyticsNavGroup {
+    gap: 3px;
+  }
+
+  .analyticsNavGroupLabel {
+    display: none;
+  }
+
+  .analyticsIntelHeaderActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 820px) {
+  .analyticsNav {
+    gap: 4px;
+  }
+
+  .analyticsNavGroup,
+  .analyticsNavGroupItems {
+    flex-direction: row;
+    gap: 4px;
+  }
+
+  .analyticsNavGroup {
+    flex: 0 0 auto;
+  }
+
+  .analyticsModalBackdrop {
+    padding: 10px;
+    align-items: stretch;
+  }
+
+  .analyticsCampaignBuilder {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    border-radius: 14px;
+  }
+
+  .analyticsBuilderDetails {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .analyticsBuilderFieldWide,
+  .analyticsBuilderFieldFull {
+    grid-column: 1 / -1;
+  }
+
+  .analyticsPickerFilters {
+    grid-template-columns: 1fr;
+  }
+
+  .analyticsFamilyTemplates {
+    grid-template-columns: 1fr;
+    padding-left: 42px;
+  }
+}
+
+@media (max-width: 560px) {
+  .analyticsBuilderHeader {
+    padding: 18px;
+  }
+
+  .analyticsBuilderHeader h2 {
+    font-size: 19px;
+  }
+
+  .analyticsBuilderDetails,
+  .analyticsTemplatePicker {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .analyticsBuilderDetails {
+    grid-template-columns: 1fr;
+  }
+
+  .analyticsBuilderFieldWide,
+  .analyticsBuilderFieldFull {
+    grid-column: auto;
+  }
+
+  .analyticsPickerHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .analyticsPickerActions {
+    width: 100%;
+  }
+
+  .analyticsPickerActions > button {
+    flex: 1 1 0;
+  }
+
+  .analyticsFamilyTemplates {
+    padding-left: 10px;
+  }
+
+  .analyticsTemplateThemeBadge {
+    display: none;
+  }
+
+  .analyticsTemplateChoice {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .analyticsSelectedSummary {
+    display: none;
+  }
+
+  .analyticsBuilderError {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+
+  .analyticsBuilderFooter {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px 16px;
+  }
+
+  .analyticsBuilderFooterActions {
+    width: 100%;
+  }
+
+  .analyticsBuilderFooterActions > button {
+    flex: 1 1 0;
+  }
+}
+
+/* ==========================================================================
+   PRODUCT UX V3 · saved views, search, drill-downs, anomalies, workflow, activity
+   ========================================================================== */
+
+.analyticsSearchTrigger,
+.analyticsToolbarButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid var(--an-border);
+  border-radius: 10px;
+  color: var(--an-text-soft);
+  background: color-mix(in srgb, var(--an-panel) 80%, transparent);
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.analyticsSearchTrigger {
+  padding: 0 10px;
+}
+
+.analyticsSearchTrigger:hover,
+.analyticsToolbarButton:hover {
+  color: var(--an-text);
+  border-color: var(--an-border-strong);
+  background: var(--an-panel-hover);
+}
+
+.analyticsSearchTrigger > span,
+.analyticsToolbarButton > span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.analyticsSearchTrigger kbd,
+.analyticsCommandPalette kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--an-border-strong);
+  border-bottom-color: color-mix(in srgb, var(--an-border-strong) 140%, transparent);
+  border-radius: 6px;
+  color: var(--an-muted);
+  background: var(--an-panel-2);
+  font:
+    700 10px/1 system-ui,
+    sans-serif;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--an-border) 85%, transparent);
+}
+
+.analyticsNotificationButton {
+  position: relative;
+}
+
+.analyticsNotificationBadge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--an-topbar);
+  border-radius: 999px;
+  color: white;
+  background: #ff4d67;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+/* Saved views */
+.analyticsSavedViews {
+  position: relative;
+  z-index: 30;
+}
+
+.analyticsToolbarButton {
+  padding: 0 10px;
+}
+
+.analyticsToolbarButton > b {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: #8ec9ff;
+  background: rgba(34, 168, 255, 0.11);
+  font-size: 10px;
+}
+
+.analyticsSavedViewsMenu {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  width: min(520px, 82vw);
+  max-height: min(620px, 72vh);
+  overflow: auto;
+  border: 1px solid var(--an-border-strong);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--an-panel) 97%, transparent);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(20px);
+}
+
+.analyticsSavedViewsHeader {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid var(--an-border);
+  background: color-mix(in srgb, var(--an-panel) 98%, transparent);
+}
+
+.analyticsSavedViewsHeader strong,
+.analyticsSavedViewsHeader span {
+  display: block;
+}
+
+.analyticsSavedViewsHeader strong {
+  color: var(--an-text);
+  font-size: 13px;
+}
+
+.analyticsSavedViewsHeader span {
+  margin-top: 3px;
+  color: var(--an-muted);
+  font-size: 11px;
+}
+
+.analyticsIconButton.compact {
+  width: 34px;
+  height: 34px;
+}
+
+.analyticsSaveViewForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px auto;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--an-border);
+  background: var(--an-panel-2);
+}
+
+.analyticsSaveViewForm input,
+.analyticsSaveViewForm select {
+  min-width: 0;
+  height: 38px;
+  border: 1px solid var(--an-border);
+  border-radius: 8px;
+  outline: none;
+  color: var(--an-text);
+  background: var(--an-input);
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.analyticsSaveViewForm input:focus,
+.analyticsSaveViewForm select:focus {
+  border-color: rgba(34, 168, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(34, 168, 255, 0.08);
+}
+
+.analyticsSaveViewForm .analyticsPrimaryButton {
+  min-height: 38px;
+  padding-inline: 12px;
+}
+
+.analyticsInlineError {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 16px 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 77, 103, 0.25);
+  border-radius: 8px;
+  color: #ff8ca0;
+  background: rgba(255, 77, 103, 0.07);
+  font-size: 10px;
+}
+
+.analyticsSavedViewsList {
+  padding: 8px;
+}
+
+.analyticsSavedViewRow {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto 30px;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  border: 0;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--an-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.analyticsSavedViewRow:hover {
+  background: var(--an-panel-hover);
+}
+
+.analyticsSavedViewIcon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #f1b64e;
+  background: rgba(242, 169, 59, 0.1);
+}
+
+.analyticsSavedViewCopy {
+  min-width: 0;
+}
+
+.analyticsSavedViewCopy strong,
+.analyticsSavedViewCopy small {
+  display: block;
+}
+
+.analyticsSavedViewCopy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.analyticsSavedViewCopy small {
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--an-muted);
+  font-size: 9px;
+}
+
+.analyticsViewVisibility {
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.analyticsViewVisibility.personal {
+  color: #8ec9ff;
+  background: rgba(34, 168, 255, 0.1);
+}
+
+.analyticsViewVisibility.team {
+  color: #a9e77e;
+  background: rgba(132, 197, 97, 0.1);
+}
+
+.analyticsSavedViewDelete {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--an-muted);
+}
+
+.analyticsSavedViewDelete:hover {
+  color: #ff7086;
+  background: rgba(255, 77, 103, 0.08);
+}
+
+/* Confidence */
+.analyticsConfidenceBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--an-border);
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.analyticsConfidenceBadge > strong {
+  min-width: 23px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 9px;
+}
+
+.analyticsConfidenceBadge.high {
+  color: #72dc91;
+  border-color: rgba(55, 206, 99, 0.18);
+  background: rgba(55, 206, 99, 0.06);
+}
+.analyticsConfidenceBadge.high > strong {
+  background: rgba(55, 206, 99, 0.11);
+}
+.analyticsConfidenceBadge.medium {
+  color: #f1bf65;
+  border-color: rgba(242, 169, 59, 0.2);
+  background: rgba(242, 169, 59, 0.06);
+}
+.analyticsConfidenceBadge.medium > strong {
+  background: rgba(242, 169, 59, 0.11);
+}
+.analyticsConfidenceBadge.low {
+  color: #ff8094;
+  border-color: rgba(255, 77, 103, 0.2);
+  background: rgba(255, 77, 103, 0.06);
+}
+.analyticsConfidenceBadge.low > strong {
+  background: rgba(255, 77, 103, 0.11);
+}
+
+.analyticsKpi.interactive {
+  cursor: pointer;
+  outline: none;
+}
+
+.analyticsKpi.interactive:hover,
+.analyticsKpi.interactive:focus-visible {
+  transform: translateY(-3px);
+  border-color: var(--an-border-strong);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.16);
+}
+
+.analyticsKpiConfidence {
+  margin-left: auto;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.analyticsKpiConfidence.high {
+  color: #6fda8e;
+  background: rgba(55, 206, 99, 0.09);
+}
+.analyticsKpiConfidence.medium {
+  color: #efb858;
+  background: rgba(242, 169, 59, 0.09);
+}
+.analyticsKpiConfidence.low {
+  color: #ff7d92;
+  background: rgba(255, 77, 103, 0.09);
+}
+
+.analyticsKpiExplore {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+  transform: translateX(-4px);
+  color: var(--an-muted);
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  transition: 0.18s ease;
+}
+
+.analyticsKpi.interactive:hover .analyticsKpiExplore,
+.analyticsKpi.interactive:focus-visible .analyticsKpiExplore {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Anomaly summary */
+.analyticsAnomalyStrip {
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid var(--an-border);
+  border-radius: 14px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--an-panel) 98%, transparent),
+    var(--an-panel-2)
+  );
+}
+
+.analyticsAnomalyStrip.hasAnomalies {
+  border-color: rgba(242, 169, 59, 0.17);
+}
+
+.analyticsAnomalyStripHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.analyticsAnomalyStripHeader > div:first-child > strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--an-text);
+  font-size: 13px;
+}
+
+.analyticsAnomalyStripGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.analyticsAnomalyMini {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--an-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--an-panel-2) 90%, transparent);
+}
+
+.analyticsAnomalyMini.critical {
+  border-color: rgba(255, 77, 103, 0.24);
+}
+.analyticsAnomalyMini.warning {
+  border-color: rgba(242, 169, 59, 0.22);
+}
+.analyticsAnomalyMini.positive {
+  border-color: rgba(55, 206, 99, 0.18);
+}
+
+.analyticsAnomalyMiniIcon {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #f1b75d;
+  background: rgba(242, 169, 59, 0.08);
+}
+.analyticsAnomalyMini.critical .analyticsAnomalyMiniIcon {
+  color: #ff748b;
+  background: rgba(255, 77, 103, 0.08);
+}
+.analyticsAnomalyMini.positive .analyticsAnomalyMiniIcon {
+  color: #63d987;
+  background: rgba(55, 206, 99, 0.08);
+}
+
+.analyticsAnomalyMini span,
+.analyticsAnomalyMini strong,
+.analyticsAnomalyMini p {
+  display: block;
+}
+.analyticsAnomalyMini span {
+  color: var(--an-muted);
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.analyticsAnomalyMini strong {
+  margin-top: 3px;
+  color: var(--an-text);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.analyticsAnomalyMini p {
+  margin: 3px 0 0;
+  color: var(--an-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.analyticsHealthyInline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #74d98f;
+  font-size: 10px;
+}
+
+/* Better zero scope / empty states */
+.analyticsScopeEmptyState {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 13px 14px;
+  border: 1px dashed var(--an-border-strong);
+  border-radius: 12px;
+  color: var(--an-text-soft);
+  background: color-mix(in srgb, var(--an-panel) 78%, transparent);
+}
+
+.analyticsScopeEmptyIcon,
+.analyticsEmptyIcon {
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--an-muted);
+  background: var(--an-panel-2);
+}
+
+.analyticsScopeEmptyIcon {
+  width: 38px;
+  height: 38px;
+}
+.analyticsScopeEmptyState strong,
+.analyticsScopeEmptyState span {
+  display: block;
+}
+.analyticsScopeEmptyState strong {
+  color: var(--an-text);
+  font-size: 11px;
+}
+.analyticsScopeEmptyState span {
+  margin-top: 3px;
+  color: var(--an-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.analyticsEmpty {
+  min-height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px;
+  border: 1px dashed var(--an-border);
+  border-radius: 11px;
+  color: var(--an-muted);
+  background: color-mix(in srgb, var(--an-panel-2) 55%, transparent);
+  text-align: left;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.analyticsEmptyIcon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+}
+
+/* Command palette */
+.analyticsCommandBackdrop,
+.analyticsDrawerBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 8, 18, 0.55);
+  backdrop-filter: blur(5px);
+}
+
+.analyticsCommandBackdrop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: min(15vh, 130px);
+}
+
+.analyticsCommandPalette {
+  width: min(680px, calc(100vw - 30px));
+  max-height: min(680px, 76vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--an-border-strong);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--an-panel) 98%, transparent);
+  box-shadow: 0 35px 110px rgba(0, 0, 0, 0.42);
+}
+
+.analyticsCommandSearch {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--an-border);
+}
+
+.analyticsCommandSearch > svg {
+  color: var(--an-muted);
+}
+.analyticsCommandSearch input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: var(--an-text);
+  background: transparent;
+  font-size: 14px;
+}
+.analyticsCommandSearch input::placeholder {
+  color: var(--an-muted-2);
+}
+
+.analyticsCommandResults {
+  overflow: auto;
+  padding: 8px;
+}
+
+.analyticsCommandGroup {
+  padding: 5px 0 7px;
+}
+
+.analyticsCommandGroup > span {
+  display: block;
+  padding: 6px 9px;
+  color: var(--an-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.analyticsCommandGroup > button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+  border: 0;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--an-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.analyticsCommandGroup > button:hover,
+.analyticsCommandGroup > button:focus-visible {
+  outline: 0;
+  background: var(--an-panel-hover);
+}
+
+.analyticsCommandGroup > button > i {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #82c4f5;
+  background: rgba(34, 168, 255, 0.08);
+  font-style: normal;
+}
+
+.analyticsCommandGroup > button strong,
+.analyticsCommandGroup > button small {
+  display: block;
+}
+.analyticsCommandGroup > button strong {
+  font-size: 11px;
+}
+.analyticsCommandGroup > button small {
+  margin-top: 2px;
+  color: var(--an-muted);
+  font-size: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.analyticsCommandGroup > button > svg {
+  color: var(--an-muted);
+}
+
+.analyticsCommandFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--an-border);
+  color: var(--an-muted);
+  font-size: 8px;
+}
+.analyticsCommandFooter > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Notifications + audit */
+.analyticsDrawerBackdrop {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.analyticsNotificationsDrawer {
+  width: min(520px, 92vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--an-border-strong);
+  background: color-mix(in srgb, var(--an-panel) 98%, transparent);
+  box-shadow: -25px 0 80px rgba(0, 0, 0, 0.3);
+}
+
+.analyticsDrawerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  border-bottom: 1px solid var(--an-border);
+}
+.analyticsDrawerHeader h2 {
+  margin: 5px 0 0;
+  color: var(--an-text);
+  font-size: 18px;
+  letter-spacing: -0.4px;
+}
+
+.analyticsDrawerTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 8px;
+  border-bottom: 1px solid var(--an-border);
+}
+.analyticsDrawerTabs button {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--an-muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+.analyticsDrawerTabs button.active {
+  color: var(--an-text);
+  background: var(--an-panel-hover);
+}
+.analyticsDrawerTabs button span {
+  min-width: 19px;
+  padding: 3px 5px;
+  border-radius: 999px;
+  background: var(--an-panel-2);
+  font-size: 8px;
+}
+
+.analyticsDrawerBody {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+}
+
+.analyticsNotificationList,
+.analyticsAuditList {
+  display: grid;
+  gap: 7px;
+}
+
+.analyticsNotificationItem {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--an-border);
+  border-radius: 11px;
+  text-align: left;
+  color: var(--an-text);
+  background: var(--an-panel-2);
+  cursor: pointer;
+}
+.analyticsNotificationItem.critical {
+  border-color: rgba(255, 77, 103, 0.24);
+}
+.analyticsNotificationItem.warning {
+  border-color: rgba(242, 169, 59, 0.21);
+}
+.analyticsNotificationItem.positive {
+  border-color: rgba(55, 206, 99, 0.18);
+}
+.analyticsNotificationItem:hover {
+  background: var(--an-panel-hover);
+}
+
+.analyticsNotificationItemIcon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #f2b85e;
+  background: rgba(242, 169, 59, 0.08);
+}
+.analyticsNotificationItem.critical .analyticsNotificationItemIcon {
+  color: #ff748b;
+  background: rgba(255, 77, 103, 0.08);
+}
+.analyticsNotificationItem.positive .analyticsNotificationItemIcon {
+  color: #65d987;
+  background: rgba(55, 206, 99, 0.08);
+}
+
+.analyticsNotificationItemCopy small,
+.analyticsNotificationItemCopy strong,
+.analyticsNotificationItemCopy p,
+.analyticsNotificationItemCopy em {
+  display: block;
+}
+.analyticsNotificationItemCopy small {
+  color: var(--an-muted);
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+.analyticsNotificationItemCopy strong {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.analyticsNotificationItemCopy p {
+  margin: 4px 0 0;
+  color: var(--an-muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.analyticsNotificationItemCopy em {
+  margin-top: 6px;
+  color: var(--an-muted-2);
+  font-size: 8px;
+  font-style: normal;
+}
+.analyticsNotificationItem > svg {
+  align-self: center;
+  color: var(--an-muted);
+}
+
+.analyticsAuditItem {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--an-border);
+  border-radius: 10px;
+  background: var(--an-panel-2);
+}
+.analyticsAuditIcon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #8bc8f4;
+  background: rgba(34, 168, 255, 0.08);
+}
+.analyticsAuditIcon.action-archived,
+.analyticsAuditIcon.action-deleted {
+  color: #ff8396;
+  background: rgba(255, 77, 103, 0.08);
+}
+.analyticsAuditIcon.action-created,
+.analyticsAuditIcon.action-restored {
+  color: #70dc8f;
+  background: rgba(55, 206, 99, 0.08);
+}
+.analyticsAuditItem strong,
+.analyticsAuditItem span {
+  display: block;
+}
+.analyticsAuditItem strong {
+  color: var(--an-text);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.analyticsAuditItem span {
+  margin-top: 3px;
+  color: var(--an-muted);
+  font-size: 8px;
+}
+
+/* KPI drill-down */
+.analyticsKpiDrilldown {
+  width: min(1080px, calc(100vw - 32px));
+  max-height: min(860px, calc(100vh - 32px));
+  overflow: auto;
+  border: 1px solid var(--an-border-strong);
+  border-radius: 18px;
+  background: var(--an-panel);
+  box-shadow: 0 35px 110px rgba(0, 0, 0, 0.42);
+}
+
+.analyticsKpiDrilldown .analyticsBuilderHeader {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: color-mix(in srgb, var(--an-panel) 97%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.analyticsKpiDrillSummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--an-border);
+  background: var(--an-panel-2);
+}
+.analyticsKpiDrillSummary > div:not(.analyticsConfidenceBadge) {
+  padding: 9px 10px;
+  border: 1px solid var(--an-border);
+  border-radius: 9px;
+  background: var(--an-panel);
+}
+.analyticsKpiDrillSummary span,
+.analyticsKpiDrillSummary strong {
+  display: block;
+}
+.analyticsKpiDrillSummary span {
+  color: var(--an-muted);
+  font-size: 8px;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+}
+.analyticsKpiDrillSummary strong {
+  margin-top: 4px;
+  color: var(--an-text);
+  font-size: 15px;
+}
+.analyticsKpiDrillSummary .analyticsConfidenceBadge {
+  align-self: center;
+}
+
+.analyticsKpiDimensionTabs {
+  display: flex;
+  gap: 6px;
+  padding: 14px 18px 4px;
+}
+.analyticsKpiDimensionTabs button {
+  padding: 7px 10px;
+  border: 1px solid var(--an-border);
+  border-radius: 8px;
+  color: var(--an-muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+.analyticsKpiDimensionTabs button.active {
+  color: var(--an-text);
+  border-color: rgba(34, 168, 255, 0.3);
+  background: rgba(34, 168, 255, 0.08);
+}
+.analyticsKpiDrillChart {
+  padding: 8px 18px 4px;
+}
+.analyticsKpiDrilldown .analyticsTableWrap {
+  margin: 0 18px 14px;
+  border: 1px solid var(--an-border);
+  border-radius: 10px;
+}
+.analyticsKpiDrilldown .analyticsMethodNote {
+  margin: 0 18px 18px;
+}
+
+/* Campaign workflow */
+.analyticsCampaignManagementList {
+  display: grid;
+  gap: 7px;
+}
+
+.analyticsCampaignManagementRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 11px;
+  border: 1px solid var(--an-border);
+  border-radius: 10px;
+  background: var(--an-panel-2);
+}
+
+.analyticsCampaignManagementIdentity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.analyticsCampaignManagementIdentity > div {
+  min-width: 0;
+}
+.analyticsCampaignManagementIdentity strong,
+.analyticsCampaignManagementIdentity span {
+  display: block;
+}
+.analyticsCampaignManagementIdentity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--an-text);
+  font-size: 11px;
+}
+.analyticsCampaignManagementIdentity span {
+  margin-top: 3px;
+  color: var(--an-muted);
+  font-size: 8px;
+}
+
+.analyticsCampaignManagementActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.analyticsCampaignManagementActions .analyticsTextButton {
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 9px;
+}
+.analyticsTextButton.danger {
+  color: #ff7a90;
+}
+.analyticsTextButton.positive {
+  color: #70dc8f;
+}
+
+/* Light-mode specificity for new floating surfaces */
+.analyticsShell[data-theme='light'] .analyticsCommandBackdrop,
+.analyticsShell[data-theme='light'] .analyticsDrawerBackdrop {
+  background: rgba(29, 49, 63, 0.22);
+}
+
+.analyticsShell[data-theme='light'] .analyticsCommandPalette,
+.analyticsShell[data-theme='light'] .analyticsNotificationsDrawer,
+.analyticsShell[data-theme='light'] .analyticsSavedViewsMenu,
+.analyticsShell[data-theme='light'] .analyticsKpiDrilldown {
+  box-shadow: 0 28px 70px rgba(43, 72, 91, 0.16);
+}
+
+@media (max-width: 1180px) {
+  .analyticsSearchTrigger > span,
+  .analyticsSearchTrigger > kbd,
+  .analyticsConfidenceBadge > span {
+    display: none;
+  }
+
+  .analyticsAnomalyStripGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .analyticsSaveViewForm {
+    grid-template-columns: 1fr;
+  }
+
+  .analyticsAnomalyStripHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .analyticsAnomalyStripGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .analyticsKpiDrillSummary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .analyticsCampaignManagementRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .analyticsCampaignManagementActions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .analyticsSavedViewsMenu {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: 76px;
+    width: auto;
+  }
+
+  .analyticsCommandBackdrop {
+    padding-top: 10px;
+  }
+
+  .analyticsCommandPalette {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+
+  .analyticsKpiDrillSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .analyticsScopeEmptyState {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+  .analyticsScopeEmptyState .analyticsSecondaryButton {
+    grid-column: 1 / -1;
+  }
+}
+
+.analyticsSavedViewRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 30px;
+  align-items: center;
+  gap: 7px;
+}
+
+.analyticsSavedViewApply {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 0;
+  border: 0;
+  text-align: left;
+  color: var(--an-text);
+  background: transparent;
+  cursor: pointer;
+}
+.analyticsSavedViewDelete {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.analyticsSavedViewDeleteSpacer {
+  width: 28px;
+  height: 28px;
 }

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { LOGO_B64 } from './Dashboard'
 import { exportDailyRows, exportGroups, exportSummary } from '@/lib/analytics/exportReport'
 import { readParam, writeParams, onPopState } from '@/lib/urlState'
@@ -71,12 +71,50 @@ function familyOfName(name) {
   return (i > 0 ? clean.slice(0, i) : clean).trim() || '\u2014'
 }
 
+function normalizeCampaignDocs(docs) {
+  return (docs || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    description: c.description || '',
+    notes: c.notes || '',
+    status: c.status || 'active',
+    color: c.color || '',
+    createdAt: c.createdAt || null,
+    updatedAt: c.updatedAt || null,
+    templateIds: (c.templates || [])
+      .map((t) => (typeof t === 'object' && t ? t.id : t))
+      .filter(Boolean),
+    keys: (c.templates || [])
+      .map((t) => (typeof t === 'object' && t ? t.templateKey : null))
+      .filter(Boolean),
+  }))
+}
+
 const dayMs = 86400000
 
-const TABS = ['Overview', 'Executive', 'Campaigns', 'Templates', 'Audience', 'Channels', 'Timing', 'Journeys', 'Deliverability', 'Data Quality', 'Alerts']
+const TABS = [
+  'Overview',
+  'Executive',
+  'Campaigns',
+  'Templates',
+  'Audience',
+  'Channels',
+  'Timing',
+  'Journeys',
+  'Deliverability',
+  'Data Quality',
+  'Alerts',
+]
+const NAV_GROUPS = [
+  { label: 'Overview', items: ['Overview', 'Executive'] },
+  { label: 'Campaigns', items: ['Campaigns', 'Templates', 'Timing'] },
+  { label: 'Audience', items: ['Audience', 'Channels', 'Journeys'] },
+  { label: 'Health', items: ['Deliverability', 'Data Quality', 'Alerts'] },
+]
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 const ALERT_RULES_KEY = 'em-analytics-alert-rules-v1'
+const NOTIFICATION_READ_KEY = 'em-analytics-notification-read-v1'
 const DEFAULT_ALERT_RULES = {
   deliveryMin: 96,
   openDropMax: 3,
@@ -87,9 +125,16 @@ const DEFAULT_ALERT_RULES = {
   dataQualityMin: 90,
 }
 
-export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'dark', onToggleTheme }) {
+export default function AnalyticsDashboard({
+  user,
+  onBack,
+  onLogout,
+  theme = 'dark',
+  onToggleTheme,
+}) {
   const [rows, setRows] = useState(null)
   const [campaigns, setCampaigns] = useState([])
+  const [templateCatalog, setTemplateCatalog] = useState([])
   const [tplMap, setTplMap] = useState({})
   const [err, setErr] = useState('')
   const [days, setDays] = useState(90)
@@ -109,6 +154,77 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
   const [events, setEvents] = useState(null) // lazily loaded, Timing tab only
   const [journeys, setJourneys] = useState(null) // lazily loaded, Journeys tab only
   const [journeyErr, setJourneyErr] = useState('')
+  const [savedViews, setSavedViews] = useState([])
+  const [auditLogs, setAuditLogs] = useState([])
+  const [commandOpen, setCommandOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [kpiDrilldown, setKpiDrilldown] = useState(null)
+  const [campaignBuilderSignal, setCampaignBuilderSignal] = useState(0)
+  const [templateFocus, setTemplateFocus] = useState('')
+  const [notificationRead, setNotificationRead] = useState(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      return new Set(JSON.parse(window.localStorage.getItem(NOTIFICATION_READ_KEY) || '[]'))
+    } catch {
+      return new Set()
+    }
+  })
+
+  const refreshCampaigns = useCallback(async () => {
+    const response = await fetch(`${API}/campaigns?limit=500&depth=1&sort=name`, {
+      credentials: 'include',
+    })
+    if (!response.ok) throw new Error('Campaign request failed')
+    const data = await response.json()
+    setCampaigns(normalizeCampaignDocs(data?.docs || []))
+  }, [])
+
+  const refreshSavedViews = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/analytics-saved-views?limit=200&depth=1&sort=name`, {
+        credentials: 'include',
+      })
+      if (!response.ok) throw new Error('Saved views request failed')
+      const data = await response.json()
+      setSavedViews(data?.docs || [])
+    } catch {
+      setSavedViews([])
+    }
+  }, [])
+
+  const refreshAuditLogs = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/analytics-audit-logs?limit=80&depth=0&sort=-createdAt`, {
+        credentials: 'include',
+      })
+      if (!response.ok) throw new Error('Audit request failed')
+      const data = await response.json()
+      setAuditLogs(data?.docs || [])
+    } catch {
+      setAuditLogs([])
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshSavedViews()
+    refreshAuditLogs()
+  }, [refreshSavedViews, refreshAuditLogs])
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setCommandOpen((open) => !open)
+      }
+      if (event.key === 'Escape') {
+        setCommandOpen(false)
+        setNotificationsOpen(false)
+        setKpiDrilldown(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     ;(async () => {
@@ -117,28 +233,29 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
           fetch(`${API}/analytics-daily?limit=10000&depth=0&sort=date`, {
             credentials: 'include',
           }).then((r) => r.json()),
-          fetch(`${API}/campaigns?limit=200&depth=1`, { credentials: 'include' }).then((r) =>
-            r.json(),
-          ),
-          fetch(`${API}/template-mappings?limit=5000&depth=0`, { credentials: 'include' }).then(
+          fetch(`${API}/campaigns?limit=500&depth=1&sort=name`, { credentials: 'include' }).then(
             (r) => r.json(),
           ),
+          fetch(`${API}/template-mappings?limit=5000&depth=0&sort=family`, {
+            credentials: 'include',
+          }).then((r) => r.json()),
         ])
         setRows(rr?.docs || [])
+        const mappingDocs = tm?.docs || []
         const map = {}
-        for (const t of tm?.docs || [])
+        for (const t of mappingDocs)
           map[t.templateKey] = { family: t.family || t.templateName, name: t.templateName }
         setTplMap(map)
-        setCampaigns(
-          (cr?.docs || []).map((c) => ({
-            id: c.id,
-            name: c.name,
-            color: c.color,
-            keys: (c.templates || [])
-              .map((t) => (typeof t === 'object' ? t.templateKey : null))
-              .filter(Boolean),
+        setTemplateCatalog(
+          mappingDocs.map((t) => ({
+            id: t.id,
+            key: t.templateKey,
+            name: t.templateName,
+            family: t.family || familyOfName(t.templateName),
+            theme: themeOf(`${t.family || ''} ${t.templateName || ''}`),
           })),
         )
+        setCampaigns(normalizeCampaignDocs(cr?.docs || []))
       } catch {
         setErr('Could not load analytics data.')
         setRows([])
@@ -197,10 +314,12 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
     const curStart = now - days * dayMs
     const prevStart = now - 2 * days * dayMs
     const scopePass = (r) =>
-      (channel === 'All' || r.channel === channel) &&
-      (region === 'All' || r.region === region)
+      (channel === 'All' || r.channel === channel) && (region === 'All' || r.region === region)
     const campaignPass = (r) => !campaignKeys || campaignKeys.has(r.templateKey)
-    const cur = [], prev = [], scopeCur = [], scopePrev = []
+    const cur = [],
+      prev = [],
+      scopeCur = [],
+      scopePrev = []
     for (const r of rows) {
       if (!scopePass(r)) continue
       const t = new Date(r.date).getTime()
@@ -217,15 +336,28 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
 
   const filteredEvents = useMemo(() => {
     if (events === null) return null
-    return events.filter((e) =>
-      (channel === 'All' || e.channel === channel) &&
-      (region === 'All' || e.region === region) &&
-      (!campaignKeys || campaignKeys.has(e.templateKey)),
+    return events.filter(
+      (e) =>
+        (channel === 'All' || e.channel === channel) &&
+        (region === 'All' || e.region === region) &&
+        (!campaignKeys || campaignKeys.has(e.templateKey)),
     )
   }, [events, channel, region, campaignKeys])
 
   const agg = useMemo(() => sumRows(current), [current])
   const aggPrev = useMemo(() => sumRows(previous), [previous])
+  const scopeConfidence = useMemo(() => buildScopeConfidence(current, tplMap), [current, tplMap])
+  const anomalies = useMemo(
+    () => buildStatisticalAnomalies(current, previous, campaigns, tplMap),
+    [current, previous, campaigns, tplMap],
+  )
+  const notificationItems = useMemo(
+    () => buildNotificationFeed(anomalies, current, campaigns, tplMap),
+    [anomalies, current, campaigns, tplMap],
+  )
+  const unreadNotifications = notificationItems.filter(
+    (item) => !notificationRead.has(item.id),
+  ).length
   const regions = useMemo(
     () => [...new Set((rows || []).map((r) => r.region))].filter(Boolean).sort(),
     [rows],
@@ -234,6 +366,32 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time',
     [],
   )
+
+  const applySavedView = useCallback(
+    (view) => {
+      if (!view) return
+      setDays(Number(view.days) || 90)
+      setCampaign(view.campaign || 'All')
+      setChannel(view.channel || 'All')
+      setRegion(view.region || 'All')
+      setTab(view.tab && TABS.includes(view.tab) ? view.tab : 'Overview')
+    },
+    [setTab],
+  )
+
+  const markNotificationsRead = useCallback(() => {
+    const next = new Set(notificationItems.map((item) => item.id))
+    setNotificationRead(next)
+    try {
+      window.localStorage.setItem(NOTIFICATION_READ_KEY, JSON.stringify([...next]))
+    } catch {}
+  }, [notificationItems])
+
+  const openNotifications = useCallback(() => {
+    setNotificationsOpen(true)
+    markNotificationsRead()
+    refreshAuditLogs()
+  }, [markNotificationsRead, refreshAuditLogs])
 
   if (rows === null)
     return (
@@ -262,6 +420,33 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
         </div>
 
         <div className="analyticsTopActions">
+          <button
+            type="button"
+            onClick={() => setCommandOpen(true)}
+            className="analyticsSearchTrigger"
+            aria-label="Search analytics"
+            title="Search analytics · Ctrl/Cmd + K"
+          >
+            <SearchIcon />
+            <span>Search</span>
+            <kbd>⌘K</kbd>
+          </button>
+
+          <button
+            type="button"
+            onClick={openNotifications}
+            className="analyticsIconButton analyticsNotificationButton"
+            aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} unread` : ''}`}
+            title="Notifications & activity"
+          >
+            <BellIcon />
+            {unreadNotifications > 0 && (
+              <span className="analyticsNotificationBadge">
+                {Math.min(99, unreadNotifications)}
+              </span>
+            )}
+          </button>
+
           {onBack && (
             <button type="button" onClick={onBack} className="analyticsHeaderButton">
               <GridIcon />
@@ -288,7 +473,11 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
             </span>
           </div>
 
-          <button type="button" onClick={onLogout} className="analyticsHeaderButton analyticsSignout">
+          <button
+            type="button"
+            onClick={onLogout}
+            className="analyticsHeaderButton analyticsSignout"
+          >
             <LogoutIcon />
             <span>Sign out</span>
           </button>
@@ -298,16 +487,24 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
       <div className="analyticsBody">
         <aside className="analyticsSidebar no-print">
           <nav className="analyticsNav" aria-label="Analytics sections">
-            {TABS.map((t) => (
-              <button
-                type="button"
-                key={t}
-                onClick={() => setTab(t)}
-                className={`analyticsNavItem ${tab === t ? 'active' : ''}`}
-              >
-                <NavIcon name={t} />
-                <span>{t}</span>
-              </button>
+            {NAV_GROUPS.map((group) => (
+              <div className="analyticsNavGroup" key={group.label}>
+                <div className="analyticsNavGroupLabel">{group.label}</div>
+                <div className="analyticsNavGroupItems">
+                  {group.items.map((t) => (
+                    <button
+                      type="button"
+                      key={t}
+                      onClick={() => setTab(t)}
+                      className={`analyticsNavItem ${tab === t ? 'active' : ''}`}
+                      aria-current={tab === t ? 'page' : undefined}
+                    >
+                      <NavIcon name={t} />
+                      <span>{t}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </nav>
 
@@ -363,6 +560,17 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
             </div>
 
             <div className="analyticsToolbarRight">
+              <SavedViewsMenu
+                views={savedViews}
+                user={user}
+                current={{ name: '', tab, days, campaign, channel, region }}
+                onApply={applySavedView}
+                onChanged={async () => {
+                  await refreshSavedViews()
+                  await refreshAuditLogs()
+                }}
+              />
+              <DataConfidenceBadge confidence={scopeConfidence} />
               <span className="analyticsTimeZone">
                 All times displayed in <strong>{timeZone}</strong>
               </span>
@@ -382,6 +590,34 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
 
           {err && <Banner>{err}</Banner>}
 
+          {!current.length && tab !== 'Journeys' && (
+            <div className="analyticsScopeEmptyState no-print">
+              <div className="analyticsScopeEmptyIcon">
+                <SearchIcon />
+              </div>
+              <div>
+                <strong>No analytics rows match this scope</strong>
+                <span>
+                  {campaign !== 'All' || channel !== 'All' || region !== 'All'
+                    ? 'One or more active filters remove all data. Reset the scope or widen the date range.'
+                    : 'The selected period does not contain analytics rollup rows yet.'}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="analyticsSecondaryButton"
+                onClick={() => {
+                  setCampaign('All')
+                  setChannel('All')
+                  setRegion('All')
+                  setDays(90)
+                }}
+              >
+                Reset filters
+              </button>
+            </div>
+          )}
+
           <div className="analyticsContent">
             {tab === 'Overview' && (
               <Overview
@@ -396,6 +632,9 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
                 weekly={weekly}
                 campaigns={campaigns}
                 tplMap={tplMap}
+                confidence={scopeConfidence}
+                anomalies={anomalies}
+                onKpiDrilldown={setKpiDrilldown}
               />
             )}
             {tab === 'Executive' && (
@@ -410,13 +649,29 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
               />
             )}
             {tab === 'Campaigns' && (
-              <CampaignsTab current={current} previous={previous} scopeCurrent={scopeCurrent} scopePrevious={scopePrevious} campaigns={campaigns} />
+              <CampaignsTab
+                current={current}
+                previous={previous}
+                scopeCurrent={scopeCurrent}
+                scopePrevious={scopePrevious}
+                campaigns={campaigns}
+                templateCatalog={templateCatalog}
+                openBuilderSignal={campaignBuilderSignal}
+                onCampaignCreated={async () => {
+                  await refreshCampaigns()
+                  await refreshAuditLogs()
+                }}
+              />
             )}
-            {tab === 'Templates' && <TemplatesTab current={current} tplMap={tplMap} />}
+            {tab === 'Templates' && (
+              <TemplatesTab current={current} tplMap={tplMap} focusTemplate={templateFocus} />
+            )}
             {tab === 'Audience' && <AudienceIntelligence current={current} previous={previous} />}
             {tab === 'Channels' && <Channels current={current} />}
             {tab === 'Timing' && <TimingTab events={filteredEvents} current={current} />}
-            {tab === 'Journeys' && <JourneyAnalytics journeys={journeys} error={journeyErr} days={days} />}
+            {tab === 'Journeys' && (
+              <JourneyAnalytics journeys={journeys} error={journeyErr} days={days} />
+            )}
             {tab === 'Deliverability' && (
               <Deliverability
                 current={current}
@@ -446,11 +701,81 @@ export default function AnalyticsDashboard({ user, onBack, onLogout, theme = 'da
           </div>
         </main>
       </div>
+
+      {commandOpen && (
+        <CommandPalette
+          tabs={TABS}
+          campaigns={campaigns}
+          templates={templateCatalog}
+          savedViews={savedViews}
+          onClose={() => setCommandOpen(false)}
+          onNavigate={(nextTab) => {
+            setTab(nextTab)
+            setCommandOpen(false)
+          }}
+          onCampaign={(name) => {
+            setCampaign(name)
+            setTab('Campaigns')
+            setCommandOpen(false)
+          }}
+          onTemplate={(item) => {
+            setTemplateFocus(item?.name || item?.key || '')
+            setTab('Templates')
+            setCommandOpen(false)
+          }}
+          onSavedView={(view) => {
+            applySavedView(view)
+            setCommandOpen(false)
+          }}
+          onNewCampaign={() => {
+            setTab('Campaigns')
+            setCampaignBuilderSignal((value) => value + 1)
+            setCommandOpen(false)
+          }}
+        />
+      )}
+
+      {notificationsOpen && (
+        <NotificationsDrawer
+          items={notificationItems}
+          auditLogs={auditLogs}
+          onClose={() => setNotificationsOpen(false)}
+          onNavigate={(nextTab) => {
+            setTab(nextTab)
+            setNotificationsOpen(false)
+          }}
+        />
+      )}
+
+      {kpiDrilldown && (
+        <KpiDrilldownModal
+          metric={kpiDrilldown}
+          rows={current}
+          campaigns={campaigns}
+          tplMap={tplMap}
+          onClose={() => setKpiDrilldown(null)}
+        />
+      )}
     </div>
   )
 }
 
-function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious, complaintRate, bounceRate, weekly, campaigns, tplMap }) {
+function Overview({
+  agg,
+  aggPrev,
+  current,
+  previous,
+  scopeCurrent,
+  scopePrevious,
+  complaintRate,
+  bounceRate,
+  weekly,
+  campaigns,
+  tplMap,
+  confidence,
+  anomalies,
+  onKpiDrilldown,
+}) {
   const openNow = pctNum(agg.uniqueOpens, agg.delivered)
   const openPrev = pctNum(aggPrev.uniqueOpens, aggPrev.delivered)
   const ctrNow = pctNum(agg.uniqueClicks, agg.delivered)
@@ -460,14 +785,21 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
   const summary = buildSummary(agg, aggPrev, current)
   const insights = buildOverviewIntelligence(agg, aggPrev, current)
   const intelligenceFeed = buildIntelligenceFeed({
-    current, previous, scopeCurrent, scopePrevious, campaigns, tplMap,
+    current,
+    previous,
+    scopeCurrent,
+    scopePrevious,
+    campaigns,
+    tplMap,
   })
 
   return (
     <>
       {summary && (
         <div className="analyticsSummary">
-          <div className="analyticsSummaryIcon"><SparkleIcon /></div>
+          <div className="analyticsSummaryIcon">
+            <SparkleIcon />
+          </div>
           <div className="analyticsSummaryText">
             <strong>Summary</strong>
             <span>{summary}</span>
@@ -475,9 +807,7 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
         </div>
       )}
 
-      {intelligenceFeed.length > 0 && (
-        <IntelligenceFeed items={intelligenceFeed} />
-      )}
+      {intelligenceFeed.length > 0 && <IntelligenceFeed items={intelligenceFeed} />}
 
       {insights.length > 0 && (
         <div className="analyticsInsightGrid analyticsOverviewInsightGrid">
@@ -486,6 +816,8 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
           ))}
         </div>
       )}
+
+      <AnomalySummary anomalies={anomalies} confidence={confidence} />
 
       <div className="analyticsKpiGrid">
         <Kpi
@@ -498,6 +830,8 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
           spark={kpiTrend}
           sparkKey="sent"
           accent="blue"
+          confidence={confidenceForMetric(current, 'sent')}
+          onClick={() => onKpiDrilldown?.('sent')}
         />
         <Kpi
           ico={<CheckIcon />}
@@ -509,6 +843,8 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
           spark={kpiTrend}
           sparkKey="deliveryRate"
           accent="green"
+          confidence={confidenceForMetric(current, 'deliveryRate')}
+          onClick={() => onKpiDrilldown?.('deliveryRate')}
         />
         <Kpi
           ico={<EyeIcon />}
@@ -521,6 +857,8 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
           spark={kpiTrend}
           sparkKey="openRate"
           accent="lime"
+          confidence={confidenceForMetric(current, 'openRate')}
+          onClick={() => onKpiDrilldown?.('openRate')}
         />
         <Kpi
           ico={<PointerIcon />}
@@ -533,6 +871,8 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
           spark={kpiTrend}
           sparkKey="ctr"
           accent="purple"
+          confidence={confidenceForMetric(current, 'ctr')}
+          onClick={() => onKpiDrilldown?.('ctr')}
         />
         <Kpi
           ico={<TargetIcon />}
@@ -548,6 +888,8 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
           spark={kpiTrend}
           sparkKey="ctor"
           accent="violet"
+          confidence={confidenceForMetric(current, 'ctor')}
+          onClick={() => onKpiDrilldown?.('ctor')}
         />
         <Kpi
           ico={<FlagIcon />}
@@ -560,6 +902,8 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
           spark={kpiTrend}
           sparkKey="complaintRate"
           accent="pink"
+          confidence={confidenceForMetric(current, 'complaintRate')}
+          onClick={() => onKpiDrilldown?.('complaintRate')}
         />
         <Kpi
           ico={<BounceIcon />}
@@ -574,6 +918,8 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
           spark={kpiTrend}
           sparkKey="bounceRate"
           accent="blue"
+          confidence={confidenceForMetric(current, 'bounceRate')}
+          onClick={() => onKpiDrilldown?.('bounceRate')}
         />
         <Kpi
           ico={<BanIcon />}
@@ -588,6 +934,8 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
           spark={kpiTrend}
           sparkKey="unsubRate"
           accent="red"
+          confidence={confidenceForMetric(current, 'unsubRate')}
+          onClick={() => onKpiDrilldown?.('unsubRate')}
         />
       </div>
 
@@ -598,8 +946,12 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
         actions={
           <div className="chartActions no-print">
             <span className="chartPeriod">{weekly ? 'Weekly' : 'Daily'}</span>
-            <button type="button" className="chartViewButton active" aria-label="Line chart"><TrendIcon /></button>
-            <button type="button" className="chartViewButton" aria-label="Bar chart"><BarsIcon /></button>
+            <button type="button" className="chartViewButton active" aria-label="Line chart">
+              <TrendIcon />
+            </button>
+            <button type="button" className="chartViewButton" aria-label="Bar chart">
+              <BarsIcon />
+            </button>
           </div>
         }
       >
@@ -657,7 +1009,15 @@ function Overview({ agg, aggPrev, current, previous, scopeCurrent, scopePrevious
   )
 }
 
-function ExecutiveOverview({ current, previous, scopeCurrent, scopePrevious, campaigns, tplMap, meta }) {
+function ExecutiveOverview({
+  current,
+  previous,
+  scopeCurrent,
+  scopePrevious,
+  campaigns,
+  tplMap,
+  meta,
+}) {
   const agg = useMemo(() => sumRows(current), [current])
   const aggPrev = useMemo(() => sumRows(previous), [previous])
   const metrics = metricsFromAgg(agg)
@@ -681,7 +1041,10 @@ function ExecutiveOverview({ current, previous, scopeCurrent, scopePrevious, cam
     campaigns,
     tplMap,
   }).slice(0, 4)
-  const brief = useMemo(() => buildWeeklyBrief(current, campaigns, tplMap), [current, campaigns, tplMap])
+  const brief = useMemo(
+    () => buildWeeklyBrief(current, campaigns, tplMap),
+    [current, campaigns, tplMap],
+  )
   const trend = useMemo(() => buildKpiTrend(current, false).slice(-30), [current])
 
   return (
@@ -698,7 +1061,9 @@ function ExecutiveOverview({ current, previous, scopeCurrent, scopePrevious, cam
         <div className={`analyticsExecutiveScore analyticsExecutiveScore-${health.tone}`}>
           <span>Marketing health</span>
           <strong>{healthScore}</strong>
-          <small>{health.label} · data quality {quality.score}/100</small>
+          <small>
+            {health.label} · data quality {quality.score}/100
+          </small>
         </div>
       </div>
 
@@ -741,7 +1106,10 @@ function ExecutiveOverview({ current, previous, scopeCurrent, scopePrevious, cam
           {intelligence.length ? (
             <div className="analyticsExecutiveSignalList">
               {intelligence.map((item, index) => (
-                <div className={`analyticsExecutiveSignal ${item.severity || item.tone || 'info'}`} key={`${item.title}-${index}`}>
+                <div
+                  className={`analyticsExecutiveSignal ${item.severity || item.tone || 'info'}`}
+                  key={`${item.title}-${index}`}
+                >
                   <span className="analyticsExecutiveSignalMark">{index + 1}</span>
                   <div>
                     <strong>{item.title}</strong>
@@ -760,7 +1128,10 @@ function ExecutiveOverview({ current, previous, scopeCurrent, scopePrevious, cam
           )}
         </Card>
 
-        <Card title="Leadership snapshot" sub="The strongest result and the clearest place to investigate">
+        <Card
+          title="Leadership snapshot"
+          sub="The strongest result and the clearest place to investigate"
+        >
           <div className="analyticsLeadershipCards">
             <div className="analyticsLeadershipCard positive">
               <span>Top campaign by unique clicks</span>
@@ -792,9 +1163,30 @@ function ExecutiveOverview({ current, previous, scopeCurrent, scopePrevious, cam
             <YAxis tick={{ fontSize: 10, fill: C.mid }} unit="%" />
             <Tooltip content={<AnalyticsTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line type="monotone" dataKey="openRate" name="Open %" stroke={C.green} strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="ctr" name="CTR %" stroke={C.purple} strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="deliveryRate" name="Delivery %" stroke={C.blue} strokeWidth={2} dot={false} />
+            <Line
+              type="monotone"
+              dataKey="openRate"
+              name="Open %"
+              stroke={C.green}
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="ctr"
+              name="CTR %"
+              stroke={C.purple}
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="deliveryRate"
+              name="Delivery %"
+              stroke={C.blue}
+              strokeWidth={2}
+              dot={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </Card>
@@ -830,10 +1222,8 @@ function WeeklyBriefCard({ brief, meta }) {
     }
   }
 
-  const download = () => downloadTextFile(
-    `marketing-weekly-brief-${brief.endDate || 'latest'}.txt`,
-    brief.text,
-  )
+  const download = () =>
+    downloadTextFile(`marketing-weekly-brief-${brief.endDate || 'latest'}.txt`, brief.text)
 
   return (
     <Card
@@ -862,7 +1252,9 @@ function WeeklyBriefCard({ brief, meta }) {
             </div>
             <div>
               <span>SCOPE</span>
-              <strong>{meta.channel} · {meta.region} · {meta.campaign}</strong>
+              <strong>
+                {meta.channel} · {meta.region} · {meta.campaign}
+              </strong>
             </div>
           </div>
           <div className="analyticsBriefMetrics">
@@ -877,7 +1269,9 @@ function WeeklyBriefCard({ brief, meta }) {
           <div className="analyticsBriefNarrative">
             <h3>What changed</h3>
             <ul>
-              {brief.bullets.map((bullet, i) => <li key={`${bullet}-${i}`}>{bullet}</li>)}
+              {brief.bullets.map((bullet, i) => (
+                <li key={`${bullet}-${i}`}>{bullet}</li>
+              ))}
             </ul>
           </div>
           <div className="analyticsBriefRecommendation">
@@ -893,24 +1287,105 @@ function WeeklyBriefCard({ brief, meta }) {
   )
 }
 
-function CampaignsTab({ current, previous, scopeCurrent, scopePrevious, campaigns }) {
+function CampaignsTab({
+  current,
+  previous,
+  scopeCurrent,
+  scopePrevious,
+  campaigns,
+  templateCatalog,
+  onCampaignCreated,
+  openBuilderSignal = 0,
+}) {
   const [drillName, setDrillName] = useState(null)
   const [compareNames, setCompareNames] = useState([])
+  const [builderOpen, setBuilderOpen] = useState(false)
+  const [builderMode, setBuilderMode] = useState('create')
+  const [builderCampaign, setBuilderCampaign] = useState(null)
+  const [campaignActionError, setCampaignActionError] = useState('')
+
+  const openBuilder = useCallback((mode = 'create', source = null) => {
+    setBuilderMode(mode)
+    setBuilderCampaign(source)
+    setBuilderOpen(true)
+    setCampaignActionError('')
+  }, [])
+
+  useEffect(() => {
+    if (openBuilderSignal > 0) openBuilder('create')
+  }, [openBuilderSignal, openBuilder])
+
+  const updateCampaignStatus = async (item, status) => {
+    if (!item?.id) return
+    if (
+      status === 'archived' &&
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Archive “${item.name}”? It will remain available in history and can be restored later.`,
+      )
+    )
+      return
+    setCampaignActionError('')
+    try {
+      const response = await fetch(`${API}/campaigns/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data?.message || 'Could not update campaign status.')
+      await onCampaignCreated?.()
+    } catch (error) {
+      setCampaignActionError(error?.message || 'Could not update campaign status.')
+    }
+  }
 
   if (!campaigns.length)
     return (
-      <Card title="Campaign Intelligence" sub="">
-        <Empty>
-          No campaigns yet. Create one in the Payload admin (/admin → Campaigns) and assign
-          templates to it.
-        </Empty>
-      </Card>
+      <>
+        <Card
+          title="Campaign Intelligence"
+          sub="Create your first campaign and assign the templates that belong to it."
+          actions={
+            <button
+              type="button"
+              className="analyticsPrimaryButton no-print"
+              onClick={() => openBuilder('create')}
+            >
+              <PlusIcon /> New Campaign
+            </button>
+          }
+        >
+          <Empty>
+            No campaigns yet. Create one here — you no longer need to leave the analytics app for
+            the Payload admin.
+          </Empty>
+        </Card>
+        {builderOpen && (
+          <CampaignBuilderModal
+            templates={templateCatalog}
+            campaigns={campaigns}
+            mode={builderMode}
+            campaign={builderCampaign}
+            onClose={() => setBuilderOpen(false)}
+            onCreated={async () => {
+              await onCampaignCreated?.()
+              setBuilderOpen(false)
+            }}
+          />
+        )}
+      </>
     )
 
   const visibleGroups = buildCampaignGroups(current, campaigns)
-  const visiblePrevByName = new Map(buildCampaignGroups(previous, campaigns).map((g) => [g.label, g]))
+  const visiblePrevByName = new Map(
+    buildCampaignGroups(previous, campaigns).map((g) => [g.label, g]),
+  )
   const cohortGroups = buildCampaignGroups(scopeCurrent, campaigns)
-  const cohortPrevByName = new Map(buildCampaignGroups(scopePrevious, campaigns).map((g) => [g.label, g]))
+  const cohortPrevByName = new Map(
+    buildCampaignGroups(scopePrevious, campaigns).map((g) => [g.label, g]),
+  )
 
   const cohortEnriched = enrichCampaignGroups(cohortGroups, cohortPrevByName)
   const benchmark = buildCampaignBenchmark(cohortEnriched)
@@ -964,10 +1439,23 @@ function CampaignsTab({ current, previous, scopeCurrent, scopePrevious, campaign
             distort the benchmark.
           </p>
         </div>
-        <div className="analyticsBenchmarkPill analyticsBenchmarkEnginePill">
-          <span>Comparable-campaign median</span>
-          <strong>{benchmark.open.toFixed(1)}% open · {benchmark.ctr.toFixed(1)}% CTR</strong>
-          <small>{benchmark.count} campaign{benchmark.count === 1 ? '' : 's'} in cohort</small>
+        <div className="analyticsIntelHeaderActions no-print">
+          <div className="analyticsBenchmarkPill analyticsBenchmarkEnginePill">
+            <span>Comparable-campaign median</span>
+            <strong>
+              {benchmark.open.toFixed(1)}% open · {benchmark.ctr.toFixed(1)}% CTR
+            </strong>
+            <small>
+              {benchmark.count} campaign{benchmark.count === 1 ? '' : 's'} in cohort
+            </small>
+          </div>
+          <button
+            type="button"
+            className="analyticsPrimaryButton"
+            onClick={() => openBuilder('create')}
+          >
+            <PlusIcon /> New Campaign
+          </button>
         </div>
       </div>
 
@@ -988,7 +1476,11 @@ function CampaignsTab({ current, previous, scopeCurrent, scopePrevious, campaign
         />
         <MiniStat
           label="Biggest movement"
-          value={biggestMover ? `${biggestMover.openDelta >= 0 ? '+' : ''}${biggestMover.openDelta.toFixed(1)}pp` : '—'}
+          value={
+            biggestMover
+              ? `${biggestMover.openDelta >= 0 ? '+' : ''}${biggestMover.openDelta.toFixed(1)}pp`
+              : '—'
+          }
           detail={biggestMover?.label || 'No previous-period signal'}
           tone={biggestMover?.openDelta >= 0 ? 'green' : 'amber'}
           icon={<TrendIcon />}
@@ -1010,7 +1502,12 @@ function CampaignsTab({ current, previous, scopeCurrent, scopePrevious, campaign
           <BenchmarkMetric label="Open rate" metric={benchmark.openStats} suffix="%" tone="green" />
           <BenchmarkMetric label="CTR" metric={benchmark.ctrStats} suffix="%" tone="purple" />
           <BenchmarkMetric label="CTOR" metric={benchmark.ctorStats} suffix="%" tone="blue" />
-          <BenchmarkMetric label="Delivery" metric={benchmark.deliveryStats} suffix="%" tone="green" />
+          <BenchmarkMetric
+            label="Delivery"
+            metric={benchmark.deliveryStats}
+            suffix="%"
+            tone="green"
+          />
         </div>
       </Card>
 
@@ -1057,7 +1554,9 @@ function CampaignsTab({ current, previous, scopeCurrent, scopePrevious, campaign
         {comparison.length >= 2 ? (
           <CampaignComparison groups={comparison} benchmark={benchmark} />
         ) : (
-          <Empty>Select at least two campaigns to compare. Up to four can be compared at once.</Empty>
+          <Empty>
+            Select at least two campaigns to compare. Up to four can be compared at once.
+          </Empty>
         )}
       </Card>
 
@@ -1112,28 +1611,47 @@ function CampaignsTab({ current, previous, scopeCurrent, scopePrevious, campaign
             </thead>
             <tbody>
               {populated.length === 0 && (
-                <tr><td colSpan={11} className="analyticsTableEmpty">No data</td></tr>
+                <tr>
+                  <td colSpan={11} className="analyticsTableEmpty">
+                    No data
+                  </td>
+                </tr>
               )}
               {populated.map((g) => (
                 <tr key={g.label}>
                   <td>
                     <div className="analyticsCampaignName">
-                      <span className="analyticsCampaignDot" style={{ background: g.color || C.mid }} />
+                      <span
+                        className="analyticsCampaignDot"
+                        style={{ background: g.color || C.mid }}
+                      />
                       <div>
                         <strong>{g.label}</strong>
-                        <span>{g.templateCount} assigned template{g.templateCount === 1 ? '' : 's'}</span>
+                        <span>
+                          {g.templateCount} assigned template{g.templateCount === 1 ? '' : 's'}
+                        </span>
                       </div>
                     </div>
                   </td>
-                  <td><StatusBadge {...g.status} /></td>
+                  <td>
+                    <StatusBadge {...g.status} />
+                  </td>
                   <td>{g.templateCount}</td>
                   <td>{fmt(g.sent)}</td>
                   <td>{g.delivery.toFixed(1)}%</td>
-                  <td><strong style={{ color: rateColor(g.open) }}>{g.open.toFixed(1)}%</strong></td>
-                  <td><MetricDelta value={g.openDelta} /></td>
-                  <td><strong style={{ color: C.purple }}>{g.ctr.toFixed(1)}%</strong></td>
+                  <td>
+                    <strong style={{ color: rateColor(g.open) }}>{g.open.toFixed(1)}%</strong>
+                  </td>
+                  <td>
+                    <MetricDelta value={g.openDelta} />
+                  </td>
+                  <td>
+                    <strong style={{ color: C.purple }}>{g.ctr.toFixed(1)}%</strong>
+                  </td>
                   <td>{g.ctor.toFixed(1)}%</td>
-                  <td className={g.bounce > 5 ? 'analyticsRiskText' : ''}>{g.bounce.toFixed(1)}%</td>
+                  <td className={g.bounce > 5 ? 'analyticsRiskText' : ''}>
+                    {g.bounce.toFixed(1)}%
+                  </td>
                   <td className="no-print">
                     <button
                       type="button"
@@ -1150,17 +1668,590 @@ function CampaignsTab({ current, previous, scopeCurrent, scopePrevious, campaign
         </div>
       </Card>
 
+      <Card
+        title="Campaign management"
+        sub="Edit assignments and campaign metadata, duplicate proven structures, or archive campaigns without leaving Analytics"
+      >
+        {campaignActionError && <Banner>{campaignActionError}</Banner>}
+        <div className="analyticsCampaignManagementList">
+          {campaigns.map((item) => (
+            <div className="analyticsCampaignManagementRow" key={item.id || item.name}>
+              <div className="analyticsCampaignManagementIdentity">
+                <span
+                  className="analyticsCampaignDot"
+                  style={{ background: item.color || C.mid }}
+                />
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>
+                    {item.keys.length} template{item.keys.length === 1 ? '' : 's'} ·{' '}
+                    {item.status || 'active'}
+                    {item.updatedAt ? ` · updated ${formatRelativeTime(item.updatedAt)}` : ''}
+                  </span>
+                </div>
+              </div>
+              <div className="analyticsCampaignManagementActions no-print">
+                <button
+                  type="button"
+                  className="analyticsTextButton"
+                  onClick={() => openBuilder('edit', item)}
+                >
+                  <EditIcon /> Edit
+                </button>
+                <button
+                  type="button"
+                  className="analyticsTextButton"
+                  onClick={() => openBuilder('duplicate', item)}
+                >
+                  <CopyIcon /> Duplicate
+                </button>
+                <button
+                  type="button"
+                  className={`analyticsTextButton ${item.status === 'archived' ? 'positive' : 'danger'}`}
+                  onClick={() =>
+                    updateCampaignStatus(item, item.status === 'archived' ? 'active' : 'archived')
+                  }
+                >
+                  {item.status === 'archived' ? (
+                    <>
+                      <RestoreIcon /> Restore
+                    </>
+                  ) : (
+                    <>
+                      <ArchiveIcon /> Archive
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       <CampaignCalendar current={current} campaigns={campaigns} />
+
+      {builderOpen && (
+        <CampaignBuilderModal
+          templates={templateCatalog}
+          campaigns={campaigns}
+          mode={builderMode}
+          campaign={builderCampaign}
+          onClose={() => setBuilderOpen(false)}
+          onCreated={async () => {
+            await onCampaignCreated?.()
+            setBuilderOpen(false)
+          }}
+        />
+      )}
     </>
   )
 }
 
-function CampaignCalendar({ current, campaigns }) {
-  const entries = useMemo(() => buildCampaignCalendarEntries(current, campaigns), [current, campaigns])
-  const months = useMemo(
-    () => [...new Set(entries.map((item) => item.month))].sort(),
-    [entries],
+function CampaignBuilderModal({
+  templates = [],
+  campaigns = [],
+  mode = 'create',
+  campaign = null,
+  onClose,
+  onCreated,
+}) {
+  const isEdit = mode === 'edit'
+  const isDuplicate = mode === 'duplicate'
+  const [name, setName] = useState(() =>
+    isDuplicate ? `${campaign?.name || 'Campaign'} Copy` : campaign?.name || '',
   )
+  const [description, setDescription] = useState(() => campaign?.description || '')
+  const [notes, setNotes] = useState(() => campaign?.notes || '')
+  const [status, setStatus] = useState(() => (isDuplicate ? 'draft' : campaign?.status || 'active'))
+  const [color, setColor] = useState(() => campaign?.color || '#84c561')
+  const [search, setSearch] = useState('')
+  const [theme, setTheme] = useState('All')
+  const [selected, setSelected] = useState(() => new Set(campaign?.templateIds || []))
+  const [expanded, setExpanded] = useState(() => new Set())
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === 'Escape' && !saving) onClose?.()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, saving])
+
+  const themes = useMemo(
+    () => ['All', ...new Set(templates.map((item) => item.theme).filter(Boolean))],
+    [templates],
+  )
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return templates.filter((item) => {
+      if (theme !== 'All' && item.theme !== theme) return false
+      if (!q) return true
+      return [item.name, item.key, item.family, item.theme]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q))
+    })
+  }, [templates, search, theme])
+
+  const groups = useMemo(() => {
+    const byFamily = new Map()
+    for (const item of filtered) {
+      const family = item.family || familyOfName(item.name)
+      if (!byFamily.has(family)) byFamily.set(family, [])
+      byFamily.get(family).push(item)
+    }
+    return [...byFamily.entries()]
+      .map(([family, items]) => ({
+        family,
+        items: [...items].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+        theme: items[0]?.theme || 'Other',
+      }))
+      .sort((a, b) => a.family.localeCompare(b.family))
+  }, [filtered])
+
+  const selectedTemplates = useMemo(
+    () => templates.filter((item) => selected.has(item.id)),
+    [templates, selected],
+  )
+
+  const toggleTemplate = (id) => {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    setError('')
+  }
+
+  const toggleFamily = (items) => {
+    const ids = items.map((item) => item.id)
+    const allSelected = ids.length > 0 && ids.every((id) => selected.has(id))
+    setSelected((current) => {
+      const next = new Set(current)
+      for (const id of ids) {
+        if (allSelected) next.delete(id)
+        else next.add(id)
+      }
+      return next
+    })
+    setError('')
+  }
+
+  const toggleExpanded = (family) => {
+    setExpanded((current) => {
+      const next = new Set(current)
+      if (next.has(family)) next.delete(family)
+      else next.add(family)
+      return next
+    })
+  }
+
+  const selectFiltered = () => {
+    setSelected((current) => {
+      const next = new Set(current)
+      for (const item of filtered) next.add(item.id)
+      return next
+    })
+    setError('')
+  }
+
+  const clearSelected = () => {
+    setSelected(new Set())
+    setError('')
+  }
+
+  const submit = async (event) => {
+    event.preventDefault()
+    if (saving) return
+
+    const cleanName = name.trim()
+    if (!cleanName) {
+      setError('Campaign name is required.')
+      return
+    }
+    if (
+      campaigns.some(
+        (item) =>
+          String(item.id) !== String(campaign?.id) &&
+          (item.name || '').trim().toLowerCase() === cleanName.toLowerCase(),
+      )
+    ) {
+      setError('A campaign with this name already exists. Use a unique campaign name.')
+      return
+    }
+    if (!selected.size) {
+      setError('Assign at least one template so the campaign can be analyzed immediately.')
+      return
+    }
+
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetch(
+        isEdit ? `${API}/campaigns/${campaign.id}` : `${API}/campaigns`,
+        {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(isDuplicate ? { 'x-analytics-action': 'duplicated' } : {}),
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: cleanName,
+            description: description.trim() || undefined,
+            notes: notes.trim() || undefined,
+            status,
+            color,
+            templates: [...selected],
+          }),
+        },
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const message =
+          data?.errors?.[0]?.message ||
+          data?.message ||
+          'Could not create the campaign. Please try again.'
+        throw new Error(message)
+      }
+      await onCreated?.(data?.doc || data)
+    } catch (err) {
+      setError(err?.message || 'Could not create the campaign. Please try again.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className="analyticsModalBackdrop no-print"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !saving) onClose?.()
+      }}
+    >
+      <div
+        className="analyticsCampaignBuilder"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="campaign-builder-title"
+      >
+        <div className="analyticsBuilderHeader">
+          <div>
+            <span className="analyticsIntelEyebrow">CAMPAIGN WORKFLOW</span>
+            <h2 id="campaign-builder-title">
+              {isEdit ? 'Edit campaign' : isDuplicate ? 'Duplicate campaign' : 'Create a campaign'}
+            </h2>
+            <p>
+              {isEdit
+                ? 'Update campaign metadata and template assignments. Changes are recorded in the activity log.'
+                : isDuplicate
+                  ? 'Start from an existing campaign structure, then adjust the name, status and assigned templates.'
+                  : 'Define the campaign once, then assign canonical templates from the existing template library.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="analyticsModalClose"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close campaign builder"
+          >
+            <XIcon />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="analyticsBuilderForm">
+          <div className="analyticsBuilderDetails">
+            <label className="analyticsBuilderField analyticsBuilderFieldWide">
+              <span>
+                Campaign name <b>*</b>
+              </span>
+              <input
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  setError('')
+                }}
+                placeholder="e.g. Q4 Reactivation"
+                autoFocus
+              />
+            </label>
+
+            <label className="analyticsBuilderField">
+              <span>Status</span>
+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+
+            <label className="analyticsBuilderField analyticsBuilderColorField">
+              <span>Color</span>
+              <div className="analyticsColorInput">
+                <input
+                  type="color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  aria-label="Campaign color"
+                />
+                <code>{color.toUpperCase()}</code>
+              </div>
+            </label>
+
+            <label className="analyticsBuilderField analyticsBuilderFieldFull">
+              <span>Description</span>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Optional context for the marketing team…"
+                rows={2}
+              />
+            </label>
+
+            <label className="analyticsBuilderField analyticsBuilderFieldFull">
+              <span>Internal notes</span>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Handoff notes, objectives, special conditions…"
+                rows={2}
+              />
+            </label>
+          </div>
+
+          <div className="analyticsTemplatePicker">
+            <div className="analyticsPickerHeading">
+              <div>
+                <h3>Assign templates</h3>
+                <p>
+                  {templates.length} canonical templates available · {selected.size} selected
+                </p>
+              </div>
+              <div className="analyticsPickerActions">
+                <button
+                  type="button"
+                  className="analyticsTextButton"
+                  onClick={selectFiltered}
+                  disabled={!filtered.length}
+                >
+                  Select filtered
+                </button>
+                <button
+                  type="button"
+                  className="analyticsTextButton"
+                  onClick={clearSelected}
+                  disabled={!selected.size}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="analyticsPickerFilters">
+              <div className="analyticsPickerSearch">
+                <SearchIcon />
+                <input
+                  aria-label="Search templates"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search template, key or family…"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    aria-label="Clear template search"
+                  >
+                    <XIcon />
+                  </button>
+                )}
+              </div>
+              <label className="analyticsPickerTheme">
+                <span>Theme</span>
+                <select value={theme} onChange={(e) => setTheme(e.target.value)}>
+                  {themes.map((value) => (
+                    <option value={value} key={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="analyticsPickerMeta">
+              <span>
+                {filtered.length} template{filtered.length === 1 ? '' : 's'} across {groups.length}{' '}
+                famil{groups.length === 1 ? 'y' : 'ies'}
+              </span>
+              {selected.size > 0 && <strong>{selected.size} selected</strong>}
+            </div>
+
+            <div className="analyticsFamilyList">
+              {groups.length === 0 && (
+                <Empty>No templates match the current search and theme filter.</Empty>
+              )}
+              {groups.map((group) => {
+                const ids = group.items.map((item) => item.id)
+                const selectedCount = ids.filter((id) => selected.has(id)).length
+                const allSelected = selectedCount === ids.length && ids.length > 0
+                const partial = selectedCount > 0 && !allSelected
+                const isOpen = Boolean(search.trim()) || expanded.has(group.family)
+                return (
+                  <div
+                    className={`analyticsFamilyGroup ${isOpen ? 'open' : ''}`}
+                    key={group.family}
+                  >
+                    <div className="analyticsFamilyHeader">
+                      <button
+                        type="button"
+                        className={`analyticsFamilyCheck ${allSelected ? 'checked' : partial ? 'partial' : ''}`}
+                        onClick={() => toggleFamily(group.items)}
+                        aria-pressed={allSelected ? true : partial ? 'mixed' : false}
+                        aria-label={`${allSelected ? 'Unselect' : 'Select'} ${group.family} family`}
+                      >
+                        {allSelected ? <CheckIcon /> : partial ? <span>−</span> : null}
+                      </button>
+                      <button
+                        type="button"
+                        className="analyticsFamilyToggle"
+                        onClick={() => toggleExpanded(group.family)}
+                        aria-expanded={isOpen}
+                      >
+                        <div>
+                          <strong>{group.family}</strong>
+                          <span>
+                            {group.theme} · {group.items.length} template
+                            {group.items.length === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                        <div className="analyticsFamilyCount">
+                          {selectedCount > 0 && <b>{selectedCount} selected</b>}
+                          <ChevronDownIcon />
+                        </div>
+                      </button>
+                    </div>
+
+                    {isOpen && (
+                      <div className="analyticsFamilyTemplates">
+                        {group.items.map((item) => {
+                          const checked = selected.has(item.id)
+                          return (
+                            <button
+                              type="button"
+                              className={`analyticsTemplateChoice ${checked ? 'selected' : ''}`}
+                              key={item.id}
+                              onClick={() => toggleTemplate(item.id)}
+                              aria-pressed={checked}
+                            >
+                              <span className="analyticsTemplateCheckbox">
+                                {checked && <CheckIcon />}
+                              </span>
+                              <span className="analyticsTemplateChoiceCopy">
+                                <strong>{item.name}</strong>
+                                <code>{item.key}</code>
+                              </span>
+                              <span className="analyticsTemplateThemeBadge">{item.theme}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {selectedTemplates.length > 0 && (
+              <div className="analyticsSelectedSummary">
+                <span>Selected templates</span>
+                <div>
+                  {selectedTemplates.slice(0, 6).map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      onClick={() => toggleTemplate(item.id)}
+                      title="Remove template"
+                    >
+                      {item.name} <XIcon />
+                    </button>
+                  ))}
+                  {selectedTemplates.length > 6 && (
+                    <small>+{selectedTemplates.length - 6} more</small>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="analyticsBuilderError">
+              <AlertIcon />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="analyticsBuilderFooter">
+            <div>
+              <strong>{selected.size}</strong>
+              <span>template{selected.size === 1 ? '' : 's'} assigned</span>
+            </div>
+            <div className="analyticsBuilderFooterActions">
+              <button
+                type="button"
+                className="analyticsSecondaryButton"
+                onClick={onClose}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="analyticsPrimaryButton"
+                disabled={saving || !name.trim() || !selected.size}
+              >
+                {saving ? (
+                  <>
+                    <ButtonSpinner />{' '}
+                    {isEdit ? 'Saving…' : isDuplicate ? 'Duplicating…' : 'Creating…'}
+                  </>
+                ) : isEdit ? (
+                  <>
+                    <CheckIcon /> Save changes
+                  </>
+                ) : isDuplicate ? (
+                  <>
+                    <CopyIcon /> Duplicate campaign
+                  </>
+                ) : (
+                  <>
+                    <PlusIcon /> Create campaign
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function ButtonSpinner() {
+  return <span className="analyticsButtonSpinner" aria-hidden="true" />
+}
+
+function CampaignCalendar({ current, campaigns }) {
+  const entries = useMemo(
+    () => buildCampaignCalendarEntries(current, campaigns),
+    [current, campaigns],
+  )
+  const months = useMemo(() => [...new Set(entries.map((item) => item.month))].sort(), [entries])
   const [month, setMonth] = useState(() => months[months.length - 1] || '')
 
   useEffect(() => {
@@ -1173,7 +2264,10 @@ function CampaignCalendar({ current, campaigns }) {
 
   if (!entries.length) {
     return (
-      <Card title="Campaign calendar" sub="Campaign activity mapped from assigned template activity">
+      <Card
+        title="Campaign calendar"
+        sub="Campaign activity mapped from assigned template activity"
+      >
         <Empty>No campaign activity is available for the selected filters.</Empty>
       </Card>
     )
@@ -1215,25 +2309,51 @@ function CampaignCalendar({ current, campaigns }) {
       className="analyticsCampaignCalendarCard"
       actions={
         <div className="analyticsCalendarNav no-print">
-          <button type="button" onClick={() => move(-1)} disabled={monthIndex <= 0} aria-label="Previous month">
+          <button
+            type="button"
+            onClick={() => move(-1)}
+            disabled={monthIndex <= 0}
+            aria-label="Previous month"
+          >
             <ArrowLeftIcon />
           </button>
           <strong>{calendarMonthLabel(month)}</strong>
-          <button type="button" onClick={() => move(1)} disabled={monthIndex >= months.length - 1} aria-label="Next month">
+          <button
+            type="button"
+            onClick={() => move(1)}
+            disabled={monthIndex >= months.length - 1}
+            aria-label="Next month"
+          >
             <ArrowRightIcon />
           </button>
         </div>
       }
     >
       <div className="analyticsCalendarSummary">
-        <div><span>Attributed sends</span><strong>{fmt(totalSends)}</strong></div>
-        <div><span>Active days</span><strong>{activeDays}</strong></div>
-        <div><span>Busiest day</span><strong>{busiest ? formatShortDate(busiest.date) : '—'}</strong></div>
-        <div><span>Campaigns active</span><strong>{new Set(monthEntries.map((item) => item.campaign)).size}</strong></div>
+        <div>
+          <span>Attributed sends</span>
+          <strong>{fmt(totalSends)}</strong>
+        </div>
+        <div>
+          <span>Active days</span>
+          <strong>{activeDays}</strong>
+        </div>
+        <div>
+          <span>Busiest day</span>
+          <strong>{busiest ? formatShortDate(busiest.date) : '—'}</strong>
+        </div>
+        <div>
+          <span>Campaigns active</span>
+          <strong>{new Set(monthEntries.map((item) => item.campaign)).size}</strong>
+        </div>
       </div>
 
       <div className="analyticsCalendarGrid">
-        {DOW.map((day) => <div className="analyticsCalendarDow" key={day}>{day}</div>)}
+        {DOW.map((day) => (
+          <div className="analyticsCalendarDow" key={day}>
+            {day}
+          </div>
+        ))}
         {cells.map((day, index) => {
           if (!day) return <div className="analyticsCalendarCell empty" key={`empty-${index}`} />
           const date = `${year}-${String(monthNumber).padStart(2, '0')}-${String(day).padStart(2, '0')}`
@@ -1243,11 +2363,17 @@ function CampaignCalendar({ current, campaigns }) {
               <div className="analyticsCalendarDate">{day}</div>
               <div className="analyticsCalendarEvents">
                 {items.slice(0, 3).map((item) => (
-                  <div className="analyticsCalendarEvent" key={`${date}-${item.campaign}`} title={`${item.campaign}: ${fmt(item.sent)} sent · ${item.open.toFixed(1)}% open · ${item.ctr.toFixed(1)}% CTR`}>
+                  <div
+                    className="analyticsCalendarEvent"
+                    key={`${date}-${item.campaign}`}
+                    title={`${item.campaign}: ${fmt(item.sent)} sent · ${item.open.toFixed(1)}% open · ${item.ctr.toFixed(1)}% CTR`}
+                  >
                     <i style={{ background: item.color || C.blue }} />
                     <div>
                       <strong>{item.campaign}</strong>
-                      <span>{fmt(item.sent)} sent · {item.ctr.toFixed(1)}% CTR</span>
+                      <span>
+                        {fmt(item.sent)} sent · {item.ctr.toFixed(1)}% CTR
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -1266,13 +2392,26 @@ function BenchmarkMetric({ label, metric, suffix = '', tone = 'blue' }) {
     <div className={`analyticsBenchmarkMetric ${tone}`}>
       <div className="analyticsBenchmarkMetricTop">
         <span>{label}</span>
-        <strong>{metric.median.toFixed(1)}{suffix}</strong>
+        <strong>
+          {metric.median.toFixed(1)}
+          {suffix}
+        </strong>
       </div>
       <div className="analyticsBenchmarkTrack">
-        <span className="analyticsBenchmarkRange" style={{ left: `${metric.q1Pct}%`, width: `${Math.max(2, metric.q3Pct - metric.q1Pct)}%` }} />
+        <span
+          className="analyticsBenchmarkRange"
+          style={{
+            left: `${metric.q1Pct}%`,
+            width: `${Math.max(2, metric.q3Pct - metric.q1Pct)}%`,
+          }}
+        />
         <i style={{ left: `${metric.medianPct}%` }} />
       </div>
-      <small>P25 {metric.q1.toFixed(1)}{suffix} · P75 {metric.q3.toFixed(1)}{suffix}</small>
+      <small>
+        P25 {metric.q1.toFixed(1)}
+        {suffix} · P75 {metric.q3.toFixed(1)}
+        {suffix}
+      </small>
     </div>
   )
 }
@@ -1291,9 +2430,21 @@ function CampaignComparison({ groups, benchmark }) {
   return (
     <div className="analyticsComparisonWrap">
       <div className="analyticsComparisonCallouts">
-        <div><span>Most clicks</span><strong>{clickWinner.label}</strong><small>{fmt(clickWinner.uniqueClicks)} unique</small></div>
-        <div><span>Best click efficiency</span><strong>{efficiencyWinner.label}</strong><small>{efficiencyWinner.ctor.toFixed(1)}% CTOR</small></div>
-        <div><span>Highest volume</span><strong>{volumeLeader.label}</strong><small>{fmt(volumeLeader.sent)} sent</small></div>
+        <div>
+          <span>Most clicks</span>
+          <strong>{clickWinner.label}</strong>
+          <small>{fmt(clickWinner.uniqueClicks)} unique</small>
+        </div>
+        <div>
+          <span>Best click efficiency</span>
+          <strong>{efficiencyWinner.label}</strong>
+          <small>{efficiencyWinner.ctor.toFixed(1)}% CTOR</small>
+        </div>
+        <div>
+          <span>Highest volume</span>
+          <strong>{volumeLeader.label}</strong>
+          <small>{fmt(volumeLeader.sent)} sent</small>
+        </div>
       </div>
 
       <div className="analyticsComparisonChart">
@@ -1316,7 +2467,9 @@ function CampaignComparison({ groups, benchmark }) {
           <thead>
             <tr>
               <th>Metric</th>
-              {groups.map((g) => <th key={g.label}>{g.label}</th>)}
+              {groups.map((g) => (
+                <th key={g.label}>{g.label}</th>
+              ))}
               <th>Benchmark</th>
             </tr>
           </thead>
@@ -1328,11 +2481,19 @@ function CampaignComparison({ groups, benchmark }) {
               ['CTR', (g) => `${g.ctr.toFixed(1)}%`, `${benchmark.ctr.toFixed(1)}%`],
               ['CTOR', (g) => `${g.ctor.toFixed(1)}%`, `${benchmark.ctor.toFixed(1)}%`],
               ['Bounce', (g) => `${g.bounce.toFixed(1)}%`, `${benchmark.bounce.toFixed(1)}%`],
-              ['Complaints', (g) => `${g.complaints.toFixed(3)}%`, `${benchmark.complaints.toFixed(3)}%`],
+              [
+                'Complaints',
+                (g) => `${g.complaints.toFixed(3)}%`,
+                `${benchmark.complaints.toFixed(3)}%`,
+              ],
             ].map(([label, fn, bench]) => (
               <tr key={label}>
-                <td><strong>{label}</strong></td>
-                {groups.map((g) => <td key={g.label}>{fn(g)}</td>)}
+                <td>
+                  <strong>{label}</strong>
+                </td>
+                {groups.map((g) => (
+                  <td key={g.label}>{fn(g)}</td>
+                ))}
                 <td className="analyticsBenchmarkCell">{bench}</td>
               </tr>
             ))}
@@ -1359,7 +2520,14 @@ function Campaign360View({ campaign, current, previous, cohort, onClose }) {
   const regions = metricGroups(rows, 'region', 'region')
   const channels = metricGroups(rows, 'channel', 'channel')
   const templates = metricGroups(rows, 'templateKey', 'templateName')
-  const insights = buildCampaign360Insights(campaign.name, metrics, prevMetrics, peerBenchmark, regions, templates)
+  const insights = buildCampaign360Insights(
+    campaign.name,
+    metrics,
+    prevMetrics,
+    peerBenchmark,
+    regions,
+    templates,
+  )
 
   return (
     <>
@@ -1368,11 +2536,16 @@ function Campaign360View({ campaign, current, previous, cohort, onClose }) {
           <ArrowLeftIcon /> Campaigns
         </button>
         <div className="analyticsDrillTitle">
-          <div className="analyticsCampaignDotLarge" style={{ background: campaign.color || C.blue }} />
+          <div
+            className="analyticsCampaignDotLarge"
+            style={{ background: campaign.color || C.blue }}
+          />
           <div>
             <span className="analyticsIntelEyebrow">CAMPAIGN 360°</span>
             <h2>{campaign.name}</h2>
-            <p>{campaign.templateCount || campaign.keys.length} assigned templates · current scope</p>
+            <p>
+              {campaign.templateCount || campaign.keys.length} assigned templates · current scope
+            </p>
           </div>
         </div>
         <div className="analyticsDrillScore">
@@ -1383,15 +2556,78 @@ function Campaign360View({ campaign, current, previous, cohort, onClose }) {
       </div>
 
       <div className="analyticsKpiGrid analyticsDrillKpis">
-        <Kpi ico={<MailIcon />} label="Sent" val={fmt(agg.sent)} clr={C.blue} delta={relDelta(agg.sent, prev.sent)} goodUp spark={trend} sparkKey="sent" accent="blue" />
-        <Kpi ico={<CheckIcon />} label="Delivery" val={`${metrics.delivery.toFixed(1)}%`} clr={C.greenTxt} delta={ppDelta(metrics.delivery, prevMetrics.delivery)} goodUp spark={trend} sparkKey="deliveryRate" accent="green" />
-        <Kpi ico={<EyeIcon />} label="Open rate" val={`${metrics.open.toFixed(1)}%`} clr={C.green} delta={ppDelta(metrics.open, prevMetrics.open)} goodUp spark={trend} sparkKey="openRate" accent="lime" />
-        <Kpi ico={<PointerIcon />} label="CTR" val={`${metrics.ctr.toFixed(1)}%`} clr={C.purple} delta={ppDelta(metrics.ctr, prevMetrics.ctr)} goodUp spark={trend} sparkKey="ctr" accent="purple" />
-        <Kpi ico={<TargetIcon />} label="CTOR" val={`${metrics.ctor.toFixed(1)}%`} clr={C.purple} delta={ppDelta(metrics.ctor, prevMetrics.ctor)} goodUp spark={trend} sparkKey="ctor" accent="violet" />
-        <Kpi ico={<BounceIcon />} label="Bounce" val={`${metrics.bounce.toFixed(1)}%`} clr={metrics.bounce > 5 ? C.red : C.blue} delta={ppDelta(metrics.bounce, prevMetrics.bounce)} goodUp={false} spark={trend} sparkKey="bounceRate" accent="red" />
+        <Kpi
+          ico={<MailIcon />}
+          label="Sent"
+          val={fmt(agg.sent)}
+          clr={C.blue}
+          delta={relDelta(agg.sent, prev.sent)}
+          goodUp
+          spark={trend}
+          sparkKey="sent"
+          accent="blue"
+        />
+        <Kpi
+          ico={<CheckIcon />}
+          label="Delivery"
+          val={`${metrics.delivery.toFixed(1)}%`}
+          clr={C.greenTxt}
+          delta={ppDelta(metrics.delivery, prevMetrics.delivery)}
+          goodUp
+          spark={trend}
+          sparkKey="deliveryRate"
+          accent="green"
+        />
+        <Kpi
+          ico={<EyeIcon />}
+          label="Open rate"
+          val={`${metrics.open.toFixed(1)}%`}
+          clr={C.green}
+          delta={ppDelta(metrics.open, prevMetrics.open)}
+          goodUp
+          spark={trend}
+          sparkKey="openRate"
+          accent="lime"
+        />
+        <Kpi
+          ico={<PointerIcon />}
+          label="CTR"
+          val={`${metrics.ctr.toFixed(1)}%`}
+          clr={C.purple}
+          delta={ppDelta(metrics.ctr, prevMetrics.ctr)}
+          goodUp
+          spark={trend}
+          sparkKey="ctr"
+          accent="purple"
+        />
+        <Kpi
+          ico={<TargetIcon />}
+          label="CTOR"
+          val={`${metrics.ctor.toFixed(1)}%`}
+          clr={C.purple}
+          delta={ppDelta(metrics.ctor, prevMetrics.ctor)}
+          goodUp
+          spark={trend}
+          sparkKey="ctor"
+          accent="violet"
+        />
+        <Kpi
+          ico={<BounceIcon />}
+          label="Bounce"
+          val={`${metrics.bounce.toFixed(1)}%`}
+          clr={metrics.bounce > 5 ? C.red : C.blue}
+          delta={ppDelta(metrics.bounce, prevMetrics.bounce)}
+          goodUp={false}
+          spark={trend}
+          sparkKey="bounceRate"
+          accent="red"
+        />
       </div>
 
-      <Card title="Campaign vs peer benchmark" sub="Peer benchmark excludes this campaign and uses the median of the remaining comparable campaigns">
+      <Card
+        title="Campaign vs peer benchmark"
+        sub="Peer benchmark excludes this campaign and uses the median of the remaining comparable campaigns"
+      >
         <div className="analyticsCampaignVsBenchmark">
           {[
             ['Open rate', metrics.open, peerBenchmark.open, 'green'],
@@ -1411,11 +2647,16 @@ function Campaign360View({ campaign, current, previous, cohort, onClose }) {
 
       {insights.length > 0 && (
         <div className="analyticsInsightGrid">
-          {insights.map((item, i) => <InsightCard key={`${item.title}-${i}`} {...item} />)}
+          {insights.map((item, i) => (
+            <InsightCard key={`${item.title}-${i}`} {...item} />
+          ))}
         </div>
       )}
 
-      <Card title="Performance timeline" sub="Daily rates for this campaign inside the selected global scope">
+      <Card
+        title="Performance timeline"
+        sub="Daily rates for this campaign inside the selected global scope"
+      >
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={trend} margin={{ top: 12, right: 10, left: -10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 4" stroke={C.border} />
@@ -1423,9 +2664,30 @@ function Campaign360View({ campaign, current, previous, cohort, onClose }) {
             <YAxis tick={{ fontSize: 10, fill: C.mid }} unit="%" />
             <Tooltip content={<AnalyticsTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line type="monotone" dataKey="openRate" name="Open %" stroke={C.green} strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="ctr" name="CTR %" stroke={C.purple} strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="deliveryRate" name="Delivery %" stroke={C.blue} strokeWidth={2} dot={false} />
+            <Line
+              type="monotone"
+              dataKey="openRate"
+              name="Open %"
+              stroke={C.green}
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="ctr"
+              name="CTR %"
+              stroke={C.purple}
+              strokeWidth={2}
+              dot={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="deliveryRate"
+              name="Delivery %"
+              stroke={C.blue}
+              strokeWidth={2}
+              dot={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </Card>
@@ -1439,7 +2701,10 @@ function Campaign360View({ campaign, current, previous, cohort, onClose }) {
         </Card>
       </div>
 
-      <Card title="Template contribution" sub="Which assigned templates are creating the campaign result">
+      <Card
+        title="Template contribution"
+        sub="Which assigned templates are creating the campaign result"
+      >
         <IntelligenceLeaderboard groups={templates} label="Template" limit={15} />
       </Card>
     </>
@@ -1451,12 +2716,29 @@ function IntelligenceLeaderboard({ groups, label, limit = 10 }) {
   return (
     <div className="analyticsTableWrap">
       <table className="analyticsDataTable">
-        <thead><tr><th>{label}</th><th>Sent</th><th>Open</th><th>CTR</th><th>CTOR</th><th>Clicks</th></tr></thead>
+        <thead>
+          <tr>
+            <th>{label}</th>
+            <th>Sent</th>
+            <th>Open</th>
+            <th>CTR</th>
+            <th>CTOR</th>
+            <th>Clicks</th>
+          </tr>
+        </thead>
         <tbody>
-          {sorted.length === 0 && <tr><td colSpan={6} className="analyticsTableEmpty">No data</td></tr>}
+          {sorted.length === 0 && (
+            <tr>
+              <td colSpan={6} className="analyticsTableEmpty">
+                No data
+              </td>
+            </tr>
+          )}
           {sorted.map((g) => (
             <tr key={g.label}>
-              <td><strong>{g.label}</strong></td>
+              <td>
+                <strong>{g.label}</strong>
+              </td>
               <td>{fmt(g.sent)}</td>
               <td>{g.open.toFixed(1)}%</td>
               <td>{g.ctr.toFixed(1)}%</td>
@@ -1470,9 +2752,13 @@ function IntelligenceLeaderboard({ groups, label, limit = 10 }) {
   )
 }
 
-function TemplatesTab({ current, tplMap }) {
+function TemplatesTab({ current, tplMap, focusTemplate = '' }) {
   const [mode, setMode] = useState('theme')
   const [section, setSection] = useState('performance')
+
+  useEffect(() => {
+    if (focusTemplate) setSection('library')
+  }, [focusTemplate])
 
   const groups = useMemo(() => {
     const keyFn = (r) => {
@@ -1548,10 +2834,7 @@ function TemplatesTab({ current, tplMap }) {
   const openBenchmark = pctNum(overall.uniqueOpens, overall.delivered)
   const underperformer = [...ranked]
     .filter((g) => g.sent >= Math.max(100, (mostUsed?.sent || 0) * 0.2))
-    .sort(
-      (a, b) =>
-        pctNum(a.uniqueOpens, a.delivered) - pctNum(b.uniqueOpens, b.delivered),
-    )[0]
+    .sort((a, b) => pctNum(a.uniqueOpens, a.delivered) - pctNum(b.uniqueOpens, b.delivered))[0]
 
   const titles = {
     theme: 'Theme leaderboard',
@@ -1603,7 +2886,7 @@ function TemplatesTab({ current, tplMap }) {
     return (
       <>
         {sectionNav}
-        <TemplateLibrary current={current} tplMap={tplMap} />
+        <TemplateLibrary current={current} tplMap={tplMap} initialQuery={focusTemplate} />
       </>
     )
   }
@@ -1651,13 +2934,17 @@ function TemplatesTab({ current, tplMap }) {
         <MiniStat
           label="Mapping gaps"
           value={fmt(unmappedKeys.length)}
-          detail={unmappedKeys.length ? 'Unmapped canonical template keys' : 'All active keys mapped'}
+          detail={
+            unmappedKeys.length ? 'Unmapped canonical template keys' : 'All active keys mapped'
+          }
           tone={unmappedKeys.length ? 'amber' : 'green'}
           icon={<TemplateIcon />}
         />
       </div>
 
-      {(unmappedKeys.length > 0 || (underperformer && pctNum(underperformer.uniqueOpens, underperformer.delivered) < openBenchmark - 5)) && (
+      {(unmappedKeys.length > 0 ||
+        (underperformer &&
+          pctNum(underperformer.uniqueOpens, underperformer.delivered) < openBenchmark - 5)) && (
         <div className="analyticsInsightGrid">
           {unmappedKeys.length > 0 && (
             <InsightCard
@@ -1667,14 +2954,15 @@ function TemplatesTab({ current, tplMap }) {
               text={`Reporting can fragment until these keys are mapped: ${unmappedKeys.slice(0, 3).join(', ')}${unmappedKeys.length > 3 ? '…' : ''}`}
             />
           )}
-          {underperformer && pctNum(underperformer.uniqueOpens, underperformer.delivered) < openBenchmark - 5 && (
-            <InsightCard
-              tone="red"
-              icon={<TrendIcon />}
-              title="High-volume underperformer"
-              text={`${underperformer.label} is ${Math.abs(pctNum(underperformer.uniqueOpens, underperformer.delivered) - openBenchmark).toFixed(1)}pp below the current open-rate benchmark.`}
-            />
-          )}
+          {underperformer &&
+            pctNum(underperformer.uniqueOpens, underperformer.delivered) < openBenchmark - 5 && (
+              <InsightCard
+                tone="red"
+                icon={<TrendIcon />}
+                title="High-volume underperformer"
+                text={`${underperformer.label} is ${Math.abs(pctNum(underperformer.uniqueOpens, underperformer.delivered) - openBenchmark).toFixed(1)}pp below the current open-rate benchmark.`}
+              />
+            )}
         </div>
       )}
 
@@ -1701,7 +2989,6 @@ function TemplatesTab({ current, tplMap }) {
     </>
   )
 }
-
 
 function TemplateFatigueView({ current, tplMap }) {
   const fatigue = useMemo(() => buildTemplateFatigue(current, tplMap), [current, tplMap])
@@ -1730,10 +3017,34 @@ function TemplateFatigueView({ current, tplMap }) {
       </div>
 
       <div className="analyticsMiniStatGrid">
-        <MiniStat label="Fatigue detected" value={fmt(fatigued.length)} detail="Material repeated-use decline" tone={fatigued.length ? 'red' : 'green'} icon={<TrendIcon />} />
-        <MiniStat label="Watch list" value={fmt(flagged.length - fatigued.length)} detail="Early deterioration signal" tone={flagged.length > fatigued.length ? 'amber' : 'green'} icon={<AlertIcon />} />
-        <MiniStat label="Stable templates" value={fmt(stable.length)} detail="No material recent decline" tone="green" icon={<ShieldIcon />} />
-        <MiniStat label="Largest fatigue score" value={steepest ? `${steepest.fatigueScore}/100` : '—'} detail={steepest?.label || 'Not enough repeated sends'} tone={steepest?.status === 'fatigued' ? 'red' : 'blue'} icon={<TemplateIcon />} />
+        <MiniStat
+          label="Fatigue detected"
+          value={fmt(fatigued.length)}
+          detail="Material repeated-use decline"
+          tone={fatigued.length ? 'red' : 'green'}
+          icon={<TrendIcon />}
+        />
+        <MiniStat
+          label="Watch list"
+          value={fmt(flagged.length - fatigued.length)}
+          detail="Early deterioration signal"
+          tone={flagged.length > fatigued.length ? 'amber' : 'green'}
+          icon={<AlertIcon />}
+        />
+        <MiniStat
+          label="Stable templates"
+          value={fmt(stable.length)}
+          detail="No material recent decline"
+          tone="green"
+          icon={<ShieldIcon />}
+        />
+        <MiniStat
+          label="Largest fatigue score"
+          value={steepest ? `${steepest.fatigueScore}/100` : '—'}
+          detail={steepest?.label || 'Not enough repeated sends'}
+          tone={steepest?.status === 'fatigued' ? 'red' : 'blue'}
+          icon={<TemplateIcon />}
+        />
       </div>
 
       {flagged.length > 0 && (
@@ -1770,7 +3081,13 @@ function TemplateFatigueView({ current, tplMap }) {
               </tr>
             </thead>
             <tbody>
-              {fatigue.length === 0 && <tr><td colSpan={9} className="analyticsTableEmpty">No template activity</td></tr>}
+              {fatigue.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="analyticsTableEmpty">
+                    No template activity
+                  </td>
+                </tr>
+              )}
               {fatigue.map((item) => (
                 <tr key={item.key}>
                   <td>
@@ -1779,26 +3096,65 @@ function TemplateFatigueView({ current, tplMap }) {
                   </td>
                   <td>
                     <StatusBadge
-                      label={item.status === 'fatigued' ? 'Fatigued' : item.status === 'watch' ? 'Watch' : item.status === 'stable' ? 'Stable' : 'Need more sends'}
-                      tone={item.status === 'fatigued' ? 'bad' : item.status === 'watch' ? 'warning' : item.status === 'stable' ? 'good' : 'neutral'}
+                      label={
+                        item.status === 'fatigued'
+                          ? 'Fatigued'
+                          : item.status === 'watch'
+                            ? 'Watch'
+                            : item.status === 'stable'
+                              ? 'Stable'
+                              : 'Need more sends'
+                      }
+                      tone={
+                        item.status === 'fatigued'
+                          ? 'bad'
+                          : item.status === 'watch'
+                            ? 'warning'
+                            : item.status === 'stable'
+                              ? 'good'
+                              : 'neutral'
+                      }
                     />
                   </td>
                   <td>{item.useCount}</td>
                   <td>{item.lastUsed ? formatShortDate(item.lastUsed) : '—'}</td>
                   <td>{item.recentOpen != null ? `${item.recentOpen.toFixed(1)}%` : '—'}</td>
-                  <td><MetricDelta value={item.openDelta} /></td>
+                  <td>
+                    <MetricDelta value={item.openDelta} />
+                  </td>
                   <td>{item.recentCtr != null ? `${item.recentCtr.toFixed(1)}%` : '—'}</td>
-                  <td><MetricDelta value={item.ctrDelta} /></td>
+                  <td>
+                    <MetricDelta value={item.ctrDelta} />
+                  </td>
                   <td>
                     <div className="analyticsFatigueSpark">
                       {item.points.length > 1 ? (
                         <ResponsiveContainer width="100%" height={42}>
-                          <LineChart data={item.points} margin={{ top: 4, right: 2, left: 2, bottom: 2 }}>
-                            <Line type="monotone" dataKey="open" stroke={C.green} strokeWidth={1.7} dot={false} isAnimationActive={false} />
-                            <Line type="monotone" dataKey="ctr" stroke={C.purple} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                          <LineChart
+                            data={item.points}
+                            margin={{ top: 4, right: 2, left: 2, bottom: 2 }}
+                          >
+                            <Line
+                              type="monotone"
+                              dataKey="open"
+                              stroke={C.green}
+                              strokeWidth={1.7}
+                              dot={false}
+                              isAnimationActive={false}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="ctr"
+                              stroke={C.purple}
+                              strokeWidth={1.5}
+                              dot={false}
+                              isAnimationActive={false}
+                            />
                           </LineChart>
                         </ResponsiveContainer>
-                      ) : '—'}
+                      ) : (
+                        '—'
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1820,15 +3176,20 @@ function TemplateFatigueView({ current, tplMap }) {
   )
 }
 
-function TemplateLibrary({ current, tplMap }) {
-  const [query, setQuery] = useState('')
+function TemplateLibrary({ current, tplMap, initialQuery = '' }) {
+  const [query, setQuery] = useState(initialQuery)
   const [theme, setTheme] = useState('All')
+  useEffect(() => {
+    if (initialQuery) setQuery(initialQuery)
+  }, [initialQuery])
   const entries = useMemo(() => buildTemplateLibraryEntries(current, tplMap), [current, tplMap])
   const themes = useMemo(() => [...new Set(entries.map((item) => item.theme))].sort(), [entries])
   const filtered = entries.filter((item) => {
     const q = query.trim().toLowerCase()
-    return (theme === 'All' || item.theme === theme) &&
+    return (
+      (theme === 'All' || item.theme === theme) &&
       (!q || `${item.label} ${item.key} ${item.family} ${item.theme}`.toLowerCase().includes(q))
+    )
   })
   const active = entries.filter((item) => item.sent > 0).length
   const mapped = entries.filter((item) => item.mapped).length
@@ -1852,22 +3213,54 @@ function TemplateLibrary({ current, tplMap }) {
       </div>
 
       <div className="analyticsMiniStatGrid">
-        <MiniStat label="Active in period" value={fmt(active)} detail="Templates with send activity" tone="green" icon={<SendIcon />} />
-        <MiniStat label="Mapped" value={fmt(mapped)} detail={`${entries.length ? ((mapped / entries.length) * 100).toFixed(0) : 100}% library coverage`} tone={mapped === entries.length ? 'green' : 'amber'} icon={<CheckIcon />} />
-        <MiniStat label="Themes" value={fmt(themes.length)} detail="Derived content categories" tone="blue" icon={<TemplateIcon />} />
-        <MiniStat label="Inactive in scope" value={fmt(entries.length - active)} detail="Mapped but no sends in selected period" tone="purple" icon={<ClockIcon />} />
+        <MiniStat
+          label="Active in period"
+          value={fmt(active)}
+          detail="Templates with send activity"
+          tone="green"
+          icon={<SendIcon />}
+        />
+        <MiniStat
+          label="Mapped"
+          value={fmt(mapped)}
+          detail={`${entries.length ? ((mapped / entries.length) * 100).toFixed(0) : 100}% library coverage`}
+          tone={mapped === entries.length ? 'green' : 'amber'}
+          icon={<CheckIcon />}
+        />
+        <MiniStat
+          label="Themes"
+          value={fmt(themes.length)}
+          detail="Derived content categories"
+          tone="blue"
+          icon={<TemplateIcon />}
+        />
+        <MiniStat
+          label="Inactive in scope"
+          value={fmt(entries.length - active)}
+          detail="Mapped but no sends in selected period"
+          tone="purple"
+          icon={<ClockIcon />}
+        />
       </div>
 
       <div className="analyticsLibraryToolbar no-print">
         <div className="analyticsLibrarySearch">
           <SearchIcon />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, key, family or theme…" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name, key, family or theme…"
+          />
         </div>
         <label className="analyticsLibrarySelect">
           <span>Theme</span>
           <select value={theme} onChange={(e) => setTheme(e.target.value)}>
             <option value="All">All themes</option>
-            {themes.map((item) => <option value={item} key={item}>{item}</option>)}
+            {themes.map((item) => (
+              <option value={item} key={item}>
+                {item}
+              </option>
+            ))}
           </select>
         </label>
         <span className="analyticsLibraryCount">{filtered.length} shown</span>
@@ -1883,16 +3276,28 @@ function TemplateLibrary({ current, tplMap }) {
             </div>
             <div className="analyticsTemplateLibraryBody">
               <div className="analyticsTemplateLibraryTop">
-                <StatusBadge label={item.mapped ? 'Mapped' : 'Unmapped'} tone={item.mapped ? 'good' : 'warning'} />
+                <StatusBadge
+                  label={item.mapped ? 'Mapped' : 'Unmapped'}
+                  tone={item.mapped ? 'good' : 'warning'}
+                />
                 <span>{item.lastUsed ? formatShortDate(item.lastUsed) : 'Not used'}</span>
               </div>
               <h3>{item.label}</h3>
               <p>{item.family}</p>
               <code>{item.key}</code>
               <div className="analyticsTemplateLibraryMetrics">
-                <div><span>Sent</span><strong>{fmt(item.sent)}</strong></div>
-                <div><span>Open</span><strong>{item.delivered ? `${item.open.toFixed(1)}%` : '—'}</strong></div>
-                <div><span>CTR</span><strong>{item.delivered ? `${item.ctr.toFixed(1)}%` : '—'}</strong></div>
+                <div>
+                  <span>Sent</span>
+                  <strong>{fmt(item.sent)}</strong>
+                </div>
+                <div>
+                  <span>Open</span>
+                  <strong>{item.delivered ? `${item.open.toFixed(1)}%` : '—'}</strong>
+                </div>
+                <div>
+                  <span>CTR</span>
+                  <strong>{item.delivered ? `${item.ctr.toFixed(1)}%` : '—'}</strong>
+                </div>
               </div>
             </div>
           </article>
@@ -1902,14 +3307,19 @@ function TemplateLibrary({ current, tplMap }) {
   )
 }
 
-
 function AudienceIntelligence({ current, previous }) {
   const [mode, setMode] = useState('region')
 
   const regionGroups = useMemo(() => metricGroups(current, 'region', 'region'), [current])
-  const prevRegions = useMemo(() => new Map(metricGroups(previous, 'region', 'region').map((g) => [g.label, g])), [previous])
+  const prevRegions = useMemo(
+    () => new Map(metricGroups(previous, 'region', 'region').map((g) => [g.label, g])),
+    [previous],
+  )
   const languageGroups = useMemo(() => groupByDerived(current, languageOfRow), [current])
-  const prevLanguages = useMemo(() => new Map(groupByDerived(previous, languageOfRow).map((g) => [g.label, g])), [previous])
+  const prevLanguages = useMemo(
+    () => new Map(groupByDerived(previous, languageOfRow).map((g) => [g.label, g])),
+    [previous],
+  )
 
   const groups = mode === 'region' ? regionGroups : languageGroups
   const prevMap = mode === 'region' ? prevRegions : prevLanguages
@@ -1948,8 +3358,20 @@ function AudienceIntelligence({ current, previous }) {
           </p>
         </div>
         <div className="analyticsAudienceMode no-print">
-          <button type="button" className={mode === 'region' ? 'active' : ''} onClick={() => setMode('region')}>Regions</button>
-          <button type="button" className={mode === 'language' ? 'active' : ''} onClick={() => setMode('language')}>Languages</button>
+          <button
+            type="button"
+            className={mode === 'region' ? 'active' : ''}
+            onClick={() => setMode('region')}
+          >
+            Regions
+          </button>
+          <button
+            type="button"
+            className={mode === 'language' ? 'active' : ''}
+            onClick={() => setMode('language')}
+          >
+            Languages
+          </button>
         </div>
       </div>
 
@@ -1957,17 +3379,46 @@ function AudienceIntelligence({ current, previous }) {
         <div className="analyticsCoverageNotice">
           <AlertIcon />
           <div>
-            <strong>{languageCoverage.toFixed(0)}% of send volume has an identifiable language signal</strong>
-            <span>Unknown rows stay visible and are excluded from language benchmarks rather than guessed from region.</span>
+            <strong>
+              {languageCoverage.toFixed(0)}% of send volume has an identifiable language signal
+            </strong>
+            <span>
+              Unknown rows stay visible and are excluded from language benchmarks rather than
+              guessed from region.
+            </span>
           </div>
         </div>
       )}
 
       <div className="analyticsMiniStatGrid">
-        <MiniStat label={`Best ${mode === 'region' ? 'region' : 'language'} · open`} value={bestOpen ? `${bestOpen.open.toFixed(1)}%` : '—'} detail={bestOpen?.label || 'No eligible data'} tone="green" icon={<EyeIcon />} />
-        <MiniStat label={`Best ${mode === 'region' ? 'region' : 'language'} · CTR`} value={bestCtr ? `${bestCtr.ctr.toFixed(1)}%` : '—'} detail={bestCtr?.label || 'No eligible data'} tone="purple" icon={<PointerIcon />} />
-        <MiniStat label="Largest audience" value={biggest ? fmt(biggest.sent) : '—'} detail={biggest?.label || 'No eligible data'} tone="blue" icon={<UsersIcon />} />
-        <MiniStat label="Watchlist" value={weakest ? `${weakest.open.toFixed(1)}%` : '—'} detail={weakest ? `${weakest.label} · lowest open rate` : 'No eligible data'} tone={weakest && weakest.open < benchmark.open - 3 ? 'amber' : 'green'} icon={<AlertIcon />} />
+        <MiniStat
+          label={`Best ${mode === 'region' ? 'region' : 'language'} · open`}
+          value={bestOpen ? `${bestOpen.open.toFixed(1)}%` : '—'}
+          detail={bestOpen?.label || 'No eligible data'}
+          tone="green"
+          icon={<EyeIcon />}
+        />
+        <MiniStat
+          label={`Best ${mode === 'region' ? 'region' : 'language'} · CTR`}
+          value={bestCtr ? `${bestCtr.ctr.toFixed(1)}%` : '—'}
+          detail={bestCtr?.label || 'No eligible data'}
+          tone="purple"
+          icon={<PointerIcon />}
+        />
+        <MiniStat
+          label="Largest audience"
+          value={biggest ? fmt(biggest.sent) : '—'}
+          detail={biggest?.label || 'No eligible data'}
+          tone="blue"
+          icon={<UsersIcon />}
+        />
+        <MiniStat
+          label="Watchlist"
+          value={weakest ? `${weakest.open.toFixed(1)}%` : '—'}
+          detail={weakest ? `${weakest.label} · lowest open rate` : 'No eligible data'}
+          tone={weakest && weakest.open < benchmark.open - 3 ? 'amber' : 'green'}
+          icon={<AlertIcon />}
+        />
       </div>
 
       <Card
@@ -1990,17 +3441,34 @@ function AudienceIntelligence({ current, previous }) {
               </tr>
             </thead>
             <tbody>
-              {enriched.length === 0 && <tr><td colSpan={9} className="analyticsTableEmpty">No data</td></tr>}
+              {enriched.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="analyticsTableEmpty">
+                    No data
+                  </td>
+                </tr>
+              )}
               {enriched.map((g) => {
                 const allClicks = enriched.reduce((n, x) => n + x.uniqueClicks, 0)
                 return (
                   <tr key={g.label} className={g.label === 'Unknown' ? 'analyticsUnknownRow' : ''}>
-                    <td><strong>{g.label}</strong>{g.label === 'Unknown' && <span className="analyticsInlineMeta">unclassified</span>}</td>
+                    <td>
+                      <strong>{g.label}</strong>
+                      {g.label === 'Unknown' && (
+                        <span className="analyticsInlineMeta">unclassified</span>
+                      )}
+                    </td>
                     <td>{fmt(g.sent)}</td>
                     <td>{g.delivery.toFixed(1)}%</td>
-                    <td><strong style={{ color: rateColor(g.open) }}>{g.open.toFixed(1)}%</strong></td>
-                    <td><MetricDelta value={g.label === 'Unknown' ? null : g.open - benchmark.open} /></td>
-                    <td><MetricDelta value={g.openDelta} /></td>
+                    <td>
+                      <strong style={{ color: rateColor(g.open) }}>{g.open.toFixed(1)}%</strong>
+                    </td>
+                    <td>
+                      <MetricDelta value={g.label === 'Unknown' ? null : g.open - benchmark.open} />
+                    </td>
+                    <td>
+                      <MetricDelta value={g.openDelta} />
+                    </td>
                     <td>{g.ctr.toFixed(1)}%</td>
                     <td>{g.ctor.toFixed(1)}%</td>
                     <td>{allClicks ? ((g.uniqueClicks / allClicks) * 100).toFixed(1) : '0.0'}%</td>
@@ -2013,18 +3481,38 @@ function AudienceIntelligence({ current, previous }) {
       </Card>
 
       <div className="analyticsTwoCol">
-        <Card title="Engagement distribution" sub={`${mode === 'region' ? 'Regions' : 'Languages'} ranked by unique clicks`}>
-          <BreakdownBars data={[...enriched].sort((a, b) => b.uniqueClicks - a.uniqueClicks).slice(0, 8).map((g) => ({ name: g.label, open: +g.open.toFixed(1), ctr: +g.ctr.toFixed(1) }))} />
+        <Card
+          title="Engagement distribution"
+          sub={`${mode === 'region' ? 'Regions' : 'Languages'} ranked by unique clicks`}
+        >
+          <BreakdownBars
+            data={[...enriched]
+              .sort((a, b) => b.uniqueClicks - a.uniqueClicks)
+              .slice(0, 8)
+              .map((g) => ({ name: g.label, open: +g.open.toFixed(1), ctr: +g.ctr.toFixed(1) }))}
+          />
         </Card>
-        <Card title="Performance outliers" sub="Groups materially above or below the median benchmark">
+        <Card
+          title="Performance outliers"
+          sub="Groups materially above or below the median benchmark"
+        >
           <div className="analyticsOutlierList">
-            {buildAudienceOutliers(enriched.filter((g) => g.label !== 'Unknown'), benchmark).map((item) => (
+            {buildAudienceOutliers(
+              enriched.filter((g) => g.label !== 'Unknown'),
+              benchmark,
+            ).map((item) => (
               <div className={`analyticsOutlierItem ${item.tone}`} key={item.label}>
                 <span className="analyticsOutlierDot" />
-                <div><strong>{item.label}</strong><span>{item.text}</span></div>
+                <div>
+                  <strong>{item.label}</strong>
+                  <span>{item.text}</span>
+                </div>
               </div>
             ))}
-            {buildAudienceOutliers(enriched.filter((g) => g.label !== 'Unknown'), benchmark).length === 0 && <Empty>No material outliers detected.</Empty>}
+            {buildAudienceOutliers(
+              enriched.filter((g) => g.label !== 'Unknown'),
+              benchmark,
+            ).length === 0 && <Empty>No material outliers detected.</Empty>}
           </div>
         </Card>
       </div>
@@ -2034,16 +3522,27 @@ function AudienceIntelligence({ current, previous }) {
 
 function IntelligenceFeed({ items }) {
   return (
-    <Card title="Intelligence feed" sub="Prioritized signals from campaigns, deliverability, audience and data quality" className="analyticsIntelFeedCard">
+    <Card
+      title="Intelligence feed"
+      sub="Prioritized signals from campaigns, deliverability, audience and data quality"
+      className="analyticsIntelFeedCard"
+    >
       <div className="analyticsIntelFeed">
         {items.map((item, i) => (
           <div className={`analyticsIntelFeedItem ${item.severity}`} key={`${item.title}-${i}`}>
-            <div className="analyticsIntelFeedSeverity">{item.severity === 'critical' ? '!' : item.severity === 'warning' ? '!' : '✓'}</div>
+            <div className="analyticsIntelFeedSeverity">
+              {item.severity === 'critical' ? '!' : item.severity === 'warning' ? '!' : '✓'}
+            </div>
             <div className="analyticsIntelFeedBody">
-              <div className="analyticsIntelFeedMeta"><span>{item.category}</span><small>{item.priority}</small></div>
+              <div className="analyticsIntelFeedMeta">
+                <span>{item.category}</span>
+                <small>{item.priority}</small>
+              </div>
               <strong>{item.title}</strong>
               <p>{item.text}</p>
-              {item.action && <div className="analyticsIntelFeedAction">Recommended: {item.action}</div>}
+              {item.action && (
+                <div className="analyticsIntelFeedAction">Recommended: {item.action}</div>
+              )}
             </div>
           </div>
         ))}
@@ -2087,12 +3586,42 @@ function AlertCenter({ current, previous, scopeCurrent, campaigns, tplMap }) {
 
   const ruleFields = [
     ['deliveryMin', 'Minimum delivery rate', '%', 'Alert when delivery drops below this level.'],
-    ['openDropMax', 'Open-rate drop', 'pp', 'Alert when open rate falls by at least this many percentage points vs previous period.'],
-    ['ctrDropMax', 'CTR drop', 'pp', 'Alert when CTR falls by at least this many percentage points vs previous period.'],
-    ['complaintMax', 'Maximum complaint rate', '%', 'Alert when complaint rate reaches this threshold.'],
-    ['bounceMax', 'Maximum bounce rate', '%', 'Alert when combined hard + soft bounce reaches this threshold.'],
-    ['unsubscribeMax', 'Maximum unsubscribe rate', '%', 'Alert when unsubscribe rate reaches this threshold.'],
-    ['dataQualityMin', 'Minimum data quality score', '/100', 'Alert when data-quality score falls below this threshold.'],
+    [
+      'openDropMax',
+      'Open-rate drop',
+      'pp',
+      'Alert when open rate falls by at least this many percentage points vs previous period.',
+    ],
+    [
+      'ctrDropMax',
+      'CTR drop',
+      'pp',
+      'Alert when CTR falls by at least this many percentage points vs previous period.',
+    ],
+    [
+      'complaintMax',
+      'Maximum complaint rate',
+      '%',
+      'Alert when complaint rate reaches this threshold.',
+    ],
+    [
+      'bounceMax',
+      'Maximum bounce rate',
+      '%',
+      'Alert when combined hard + soft bounce reaches this threshold.',
+    ],
+    [
+      'unsubscribeMax',
+      'Maximum unsubscribe rate',
+      '%',
+      'Alert when unsubscribe rate reaches this threshold.',
+    ],
+    [
+      'dataQualityMin',
+      'Minimum data quality score',
+      '/100',
+      'Alert when data-quality score falls below this threshold.',
+    ],
   ]
 
   return (
@@ -2106,18 +3635,46 @@ function AlertCenter({ current, previous, scopeCurrent, campaigns, tplMap }) {
             Rules are saved in this browser for now; no notification is sent externally yet.
           </p>
         </div>
-        <div className={`analyticsAlertCountPill ${critical ? 'critical' : warning ? 'warning' : 'healthy'}`}>
+        <div
+          className={`analyticsAlertCountPill ${critical ? 'critical' : warning ? 'warning' : 'healthy'}`}
+        >
           <span>Active signals</span>
           <strong>{alerts.length}</strong>
-          <small>{critical} critical · {warning} warning</small>
+          <small>
+            {critical} critical · {warning} warning
+          </small>
         </div>
       </div>
 
       <div className="analyticsMiniStatGrid">
-        <MiniStat label="Critical" value={fmt(critical)} detail="Immediate review recommended" tone={critical ? 'red' : 'green'} icon={<AlertIcon />} />
-        <MiniStat label="Warnings" value={fmt(warning)} detail="Monitor or investigate" tone={warning ? 'amber' : 'green'} icon={<BellIcon />} />
-        <MiniStat label="Rules enabled" value={fmt(ruleFields.length)} detail="Current threshold rules" tone="blue" icon={<CheckIcon />} />
-        <MiniStat label="Rule storage" value={saved ? 'Saved' : 'Local'} detail="Saved on this browser" tone="purple" icon={<ShieldIcon />} />
+        <MiniStat
+          label="Critical"
+          value={fmt(critical)}
+          detail="Immediate review recommended"
+          tone={critical ? 'red' : 'green'}
+          icon={<AlertIcon />}
+        />
+        <MiniStat
+          label="Warnings"
+          value={fmt(warning)}
+          detail="Monitor or investigate"
+          tone={warning ? 'amber' : 'green'}
+          icon={<BellIcon />}
+        />
+        <MiniStat
+          label="Rules enabled"
+          value={fmt(ruleFields.length)}
+          detail="Current threshold rules"
+          tone="blue"
+          icon={<CheckIcon />}
+        />
+        <MiniStat
+          label="Rule storage"
+          value={saved ? 'Saved' : 'Local'}
+          detail="Saved on this browser"
+          tone="purple"
+          icon={<ShieldIcon />}
+        />
       </div>
 
       <Card title="Active alerts" sub="Sorted by severity and impact">
@@ -2125,9 +3682,14 @@ function AlertCenter({ current, previous, scopeCurrent, campaigns, tplMap }) {
           <div className="analyticsActiveAlertList">
             {alerts.map((alert, i) => (
               <div className={`analyticsActiveAlert ${alert.severity}`} key={`${alert.id}-${i}`}>
-                <div className="analyticsActiveAlertIcon">{alert.severity === 'critical' ? '!' : alert.severity === 'warning' ? '!' : 'i'}</div>
+                <div className="analyticsActiveAlertIcon">
+                  {alert.severity === 'critical' ? '!' : alert.severity === 'warning' ? '!' : 'i'}
+                </div>
                 <div className="analyticsActiveAlertBody">
-                  <div><span>{alert.category}</span><small>{alert.metric}</small></div>
+                  <div>
+                    <span>{alert.category}</span>
+                    <small>{alert.metric}</small>
+                  </div>
                   <strong>{alert.title}</strong>
                   <p>{alert.text}</p>
                 </div>
@@ -2136,20 +3698,40 @@ function AlertCenter({ current, previous, scopeCurrent, campaigns, tplMap }) {
             ))}
           </div>
         ) : (
-          <div className="analyticsHealthyState"><ShieldIcon /><strong>No active alerts</strong><span>All configured thresholds are currently inside range.</span></div>
+          <div className="analyticsHealthyState">
+            <ShieldIcon />
+            <strong>No active alerts</strong>
+            <span>All configured thresholds are currently inside range.</span>
+          </div>
         )}
       </Card>
 
       <Card
         title="Alert rules"
         sub="Tune thresholds to match your internal operating standards"
-        actions={<button type="button" className="analyticsTextButton no-print" onClick={() => setRules(DEFAULT_ALERT_RULES)}>Reset defaults</button>}
+        actions={
+          <button
+            type="button"
+            className="analyticsTextButton no-print"
+            onClick={() => setRules(DEFAULT_ALERT_RULES)}
+          >
+            Reset defaults
+          </button>
+        }
       >
         <div className="analyticsAlertRulesGrid">
           {ruleFields.map(([key, label, suffix, help]) => (
             <label className="analyticsAlertRule" key={key}>
               <span>{label}</span>
-              <div className="analyticsAlertRuleInput"><input type="number" step="0.1" value={rules[key]} onChange={(e) => update(key, e.target.value)} /><em>{suffix}</em></div>
+              <div className="analyticsAlertRuleInput">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={rules[key]}
+                  onChange={(e) => update(key, e.target.value)}
+                />
+                <em>{suffix}</em>
+              </div>
               <small>{help}</small>
             </label>
           ))}
@@ -2200,10 +3782,11 @@ function JourneyAnalytics({ journeys, error, days }) {
   if (error) return <Banner>{error}</Banner>
 
   const regions = [...new Set(journeys.map((j) => j.region).filter(Boolean))].sort()
-  const anchor = journeys.reduce((max, j) => {
-    const value = new Date(j.journeyStartedAt || j.journeyEndedAt || 0).getTime()
-    return Number.isFinite(value) ? Math.max(max, value) : max
-  }, 0) || Date.now()
+  const anchor =
+    journeys.reduce((max, j) => {
+      const value = new Date(j.journeyStartedAt || j.journeyEndedAt || 0).getTime()
+      return Number.isFinite(value) ? Math.max(max, value) : max
+    }, 0) || Date.now()
   const cutoff = anchor - days * dayMs
   const scoped = journeys.filter((j) => {
     const started = new Date(j.journeyStartedAt || j.journeyEndedAt || 0).getTime()
@@ -2214,35 +3797,57 @@ function JourneyAnalytics({ journeys, error, days }) {
   const total = scoped.length
   const statusCounts = countValues(scoped, (j) => j.journeyStatus || 'Unknown')
   const started = scoped.filter((j) => j.journeyStartedAt).length
-  const engagedPath = scoped.filter((j) => j.path1Step || j.path1LastSendAt || j.path1ThankyouSentAt).length
-  const nonEngagedPath = scoped.filter((j) => j.path2Step || j.path2LastSendAt || j.day0SentAt).length
+  const engagedPath = scoped.filter(
+    (j) => j.path1Step || j.path1LastSendAt || j.path1ThankyouSentAt,
+  ).length
+  const nonEngagedPath = scoped.filter(
+    (j) => j.path2Step || j.path2LastSendAt || j.day0SentAt,
+  ).length
   const forms = scoped.filter((j) => j.formSubmitted).length
   const thankyou = scoped.filter((j) => j.path1ThankyouSentAt).length
   const ended = scoped.filter((j) => j.journeyEndedAt).length
-  const completed = scoped.filter((j) => ['Converted', 'Completed'].includes(j.journeyStatus)).length
+  const completed = scoped.filter((j) =>
+    ['Converted', 'Completed'].includes(j.journeyStatus),
+  ).length
   const durations = scoped
     .filter((j) => j.journeyStartedAt && j.journeyEndedAt)
-    .map((j) => (new Date(j.journeyEndedAt).getTime() - new Date(j.journeyStartedAt).getTime()) / dayMs)
+    .map(
+      (j) =>
+        (new Date(j.journeyEndedAt).getTime() - new Date(j.journeyStartedAt).getTime()) / dayMs,
+    )
     .filter((v) => Number.isFinite(v) && v >= 0)
-  const avgDuration = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null
+  const avgDuration = durations.length
+    ? durations.reduce((a, b) => a + b, 0) / durations.length
+    : null
 
-  const regionGroups = regions.map((name) => {
-    const rows = scoped.filter((j) => j.region === name)
-    const converted = rows.filter((j) => ['Converted', 'Completed'].includes(j.journeyStatus)).length
-    const submitted = rows.filter((j) => j.formSubmitted).length
-    return {
-      label: name,
-      total: rows.length,
-      active: rows.filter((j) => j.journeyStatus === 'Active').length,
-      converted,
-      submitted,
-      conversion: pctNum(converted, rows.length),
-      formRate: pctNum(submitted, rows.length),
-    }
-  }).filter((g) => g.total > 0).sort((a, b) => b.total - a.total)
+  const regionGroups = regions
+    .map((name) => {
+      const rows = scoped.filter((j) => j.region === name)
+      const converted = rows.filter((j) =>
+        ['Converted', 'Completed'].includes(j.journeyStatus),
+      ).length
+      const submitted = rows.filter((j) => j.formSubmitted).length
+      return {
+        label: name,
+        total: rows.length,
+        active: rows.filter((j) => j.journeyStatus === 'Active').length,
+        converted,
+        submitted,
+        conversion: pctNum(converted, rows.length),
+        formRate: pctNum(submitted, rows.length),
+      }
+    })
+    .filter((g) => g.total > 0)
+    .sort((a, b) => b.total - a.total)
 
-  const path1Steps = countValues(scoped.filter((j) => j.path1Step), (j) => j.path1Step)
-  const path2Steps = countValues(scoped.filter((j) => j.path2Step), (j) => j.path2Step)
+  const path1Steps = countValues(
+    scoped.filter((j) => j.path1Step),
+    (j) => j.path1Step,
+  )
+  const path2Steps = countValues(
+    scoped.filter((j) => j.path2Step),
+    (j) => j.path2Step,
+  )
   const milestones = [
     ['Tracked records', total, 'All records in scope'],
     ['Journey started', started, 'Has journeyStartedAt'],
@@ -2269,19 +3874,50 @@ function JourneyAnalytics({ journeys, error, days }) {
           <span>Region</span>
           <select value={region} onChange={(e) => setRegion(e.target.value)}>
             <option value="All">All journey regions</option>
-            {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+            {regions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
           </select>
         </label>
       </div>
 
       <div className="analyticsMiniStatGrid">
-        <MiniStat label="Tracked" value={fmt(total)} detail={`Last ${days} days by journey start`} tone="blue" icon={<UsersIcon />} />
-        <MiniStat label="Form submissions" value={fmt(forms)} detail={`${pctNum(forms, total).toFixed(1)}% of tracked`} tone="green" icon={<CheckIcon />} />
-        <MiniStat label="Converted / completed" value={fmt(completed)} detail={`${pctNum(completed, total).toFixed(1)}% of tracked`} tone="purple" icon={<TargetIcon />} />
-        <MiniStat label="Avg. journey duration" value={avgDuration == null ? '—' : `${avgDuration.toFixed(1)}d`} detail={`${durations.length} ended journeys with duration`} tone="amber" icon={<ClockIcon />} />
+        <MiniStat
+          label="Tracked"
+          value={fmt(total)}
+          detail={`Last ${days} days by journey start`}
+          tone="blue"
+          icon={<UsersIcon />}
+        />
+        <MiniStat
+          label="Form submissions"
+          value={fmt(forms)}
+          detail={`${pctNum(forms, total).toFixed(1)}% of tracked`}
+          tone="green"
+          icon={<CheckIcon />}
+        />
+        <MiniStat
+          label="Converted / completed"
+          value={fmt(completed)}
+          detail={`${pctNum(completed, total).toFixed(1)}% of tracked`}
+          tone="purple"
+          icon={<TargetIcon />}
+        />
+        <MiniStat
+          label="Avg. journey duration"
+          value={avgDuration == null ? '—' : `${avgDuration.toFixed(1)}d`}
+          detail={`${durations.length} ended journeys with duration`}
+          tone="amber"
+          icon={<ClockIcon />}
+        />
       </div>
 
-      <Card title="Journey status" sub="Current status distribution inside the selected journey scope">
+      <Card
+        title="Journey status"
+        sub="Current status distribution inside the selected journey scope"
+      >
         <div className="analyticsJourneyStatusGrid">
           {['Active', 'Converted', 'Completed', 'Excluded', 'Unknown'].map((status) => {
             const value = statusCounts.get(status) || 0
@@ -2297,15 +3933,26 @@ function JourneyAnalytics({ journeys, error, days }) {
         </div>
       </Card>
 
-      <Card title="Observed journey milestones" sub="Parallel branch signals · percentages are relative to tracked records, not assumed sequential conversion">
+      <Card
+        title="Observed journey milestones"
+        sub="Parallel branch signals · percentages are relative to tracked records, not assumed sequential conversion"
+      >
         <div className="analyticsJourneyMilestones">
           {milestones.map(([label, value, detail]) => (
             <div className="analyticsJourneyMilestone" key={label}>
               <div className="analyticsJourneyMilestoneTop">
-                <div><strong>{label}</strong><span>{detail}</span></div>
-                <div><b>{fmt(value)}</b><small>{pctNum(value, total).toFixed(1)}%</small></div>
+                <div>
+                  <strong>{label}</strong>
+                  <span>{detail}</span>
+                </div>
+                <div>
+                  <b>{fmt(value)}</b>
+                  <small>{pctNum(value, total).toFixed(1)}%</small>
+                </div>
               </div>
-              <div className="analyticsJourneyTrack"><span style={{ width: `${Math.min(100, pctNum(value, total))}%` }} /></div>
+              <div className="analyticsJourneyTrack">
+                <span style={{ width: `${Math.min(100, pctNum(value, total))}%` }} />
+              </div>
             </div>
           ))}
         </div>
@@ -2320,21 +3967,46 @@ function JourneyAnalytics({ journeys, error, days }) {
         </Card>
       </div>
 
-      <Card title="Regional journey performance" sub="Tracked records, form submissions and final Converted/Completed status by journey region">
+      <Card
+        title="Regional journey performance"
+        sub="Tracked records, form submissions and final Converted/Completed status by journey region"
+      >
         <div className="analyticsTableWrap">
           <table className="analyticsDataTable">
-            <thead><tr><th>Region</th><th>Tracked</th><th>Active</th><th>Forms</th><th>Form rate</th><th>Converted / completed</th><th>Final rate</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Region</th>
+                <th>Tracked</th>
+                <th>Active</th>
+                <th>Forms</th>
+                <th>Form rate</th>
+                <th>Converted / completed</th>
+                <th>Final rate</th>
+              </tr>
+            </thead>
             <tbody>
-              {regionGroups.length === 0 && <tr><td colSpan={7} className="analyticsTableEmpty">No journey data in scope</td></tr>}
+              {regionGroups.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="analyticsTableEmpty">
+                    No journey data in scope
+                  </td>
+                </tr>
+              )}
               {regionGroups.map((g) => (
                 <tr key={g.label}>
-                  <td><strong>{g.label}</strong></td>
+                  <td>
+                    <strong>{g.label}</strong>
+                  </td>
                   <td>{fmt(g.total)}</td>
                   <td>{fmt(g.active)}</td>
                   <td>{fmt(g.submitted)}</td>
                   <td>{g.formRate.toFixed(1)}%</td>
                   <td>{fmt(g.converted)}</td>
-                  <td><strong style={{ color: rateColor(g.conversion) }}>{g.conversion.toFixed(1)}%</strong></td>
+                  <td>
+                    <strong style={{ color: rateColor(g.conversion) }}>
+                      {g.conversion.toFixed(1)}%
+                    </strong>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -2345,8 +4017,9 @@ function JourneyAnalytics({ journeys, error, days }) {
       <div className="analyticsMethodNote">
         <AlertIcon />
         <span>
-          Journey status and milestone fields come directly from JourneyTracking. This dashboard does
-          not infer missing steps or assume that a form submission is required for every completion.
+          Journey status and milestone fields come directly from JourneyTracking. This dashboard
+          does not infer missing steps or assume that a form submission is required for every
+          completion.
         </span>
       </div>
     </>
@@ -2360,8 +4033,15 @@ function JourneyStepList({ counts, total }) {
     <div className="analyticsJourneyStepList">
       {rows.map(([label, value]) => (
         <div key={label}>
-          <div><strong>{label}</strong><span>{fmt(value)} · {pctNum(value, total).toFixed(1)}%</span></div>
-          <div className="analyticsJourneyTrack"><span style={{ width: `${Math.min(100, pctNum(value, total))}%` }} /></div>
+          <div>
+            <strong>{label}</strong>
+            <span>
+              {fmt(value)} · {pctNum(value, total).toFixed(1)}%
+            </span>
+          </div>
+          <div className="analyticsJourneyTrack">
+            <span style={{ width: `${Math.min(100, pctNum(value, total))}%` }} />
+          </div>
         </div>
       ))}
     </div>
@@ -2450,7 +4130,9 @@ function Deliverability({ current, agg, aggPrev, complaintRate, bounceRate, week
           <ShieldIcon />
           <div>
             <strong>No high-risk deliverability signals detected</strong>
-            <span>Current filtered data is inside the dashboard's configured warning thresholds.</span>
+            <span>
+              Current filtered data is inside the dashboard's configured warning thresholds.
+            </span>
           </div>
         </div>
       )}
@@ -2536,18 +4218,30 @@ function Deliverability({ current, agg, aggPrev, complaintRate, bounceRate, week
             </thead>
             <tbody>
               {regions.length === 0 && (
-                <tr><td colSpan={7} className="analyticsTableEmpty">No data</td></tr>
+                <tr>
+                  <td colSpan={7} className="analyticsTableEmpty">
+                    No data
+                  </td>
+                </tr>
               )}
               {regions.map((r) => {
                 const h = healthLabel(r.score)
                 return (
                   <tr key={r.label}>
-                    <td><strong>{r.label}</strong></td>
-                    <td><StatusBadge label={`${r.score}/100 · ${h.label}`} tone={h.tone} /></td>
+                    <td>
+                      <strong>{r.label}</strong>
+                    </td>
+                    <td>
+                      <StatusBadge label={`${r.score}/100 · ${h.label}`} tone={h.tone} />
+                    </td>
                     <td>{fmt(r.sent)}</td>
                     <td>{r.delivery.toFixed(1)}%</td>
-                    <td className={r.bounce >= 5 ? 'analyticsRiskText' : ''}>{r.bounce.toFixed(2)}%</td>
-                    <td className={r.complaints >= 0.1 ? 'analyticsRiskText' : ''}>{r.complaints.toFixed(3)}%</td>
+                    <td className={r.bounce >= 5 ? 'analyticsRiskText' : ''}>
+                      {r.bounce.toFixed(2)}%
+                    </td>
+                    <td className={r.complaints >= 0.1 ? 'analyticsRiskText' : ''}>
+                      {r.complaints.toFixed(3)}%
+                    </td>
                     <td>{r.unsub.toFixed(2)}%</td>
                   </tr>
                 )
@@ -2629,9 +4323,18 @@ function DataQuality({ current, tplMap, campaigns }) {
       ) : (
         <div className="analyticsQualityIssueGrid">
           {report.issues.map((issue) => (
-            <div className={`analyticsQualityIssue analyticsQualityIssue-${issue.tone}`} key={issue.id}>
+            <div
+              className={`analyticsQualityIssue analyticsQualityIssue-${issue.tone}`}
+              key={issue.id}
+            >
               <div className="analyticsQualityIssueIcon">
-                {issue.tone === 'red' ? <AlertIcon /> : issue.tone === 'amber' ? <FlagIcon /> : <CheckIcon />}
+                {issue.tone === 'red' ? (
+                  <AlertIcon />
+                ) : issue.tone === 'amber' ? (
+                  <FlagIcon />
+                ) : (
+                  <CheckIcon />
+                )}
               </div>
               <div className="analyticsQualityIssueCopy">
                 <div className="analyticsQualityIssueTop">
@@ -2653,23 +4356,37 @@ function DataQuality({ current, tplMap, campaigns }) {
       )}
 
       <div className="analyticsTwoCol analyticsQualityDetails">
-        <Card title="Unmapped template keys" sub="Keys present in reporting but missing from Template Mappings">
+        <Card
+          title="Unmapped template keys"
+          sub="Keys present in reporting but missing from Template Mappings"
+        >
           {report.unmappedKeys.length ? (
             <div className="analyticsKeyList">
-              {report.unmappedKeys.map((key) => <code key={key}>{key}</code>)}
+              {report.unmappedKeys.map((key) => (
+                <code key={key}>{key}</code>
+              ))}
             </div>
           ) : (
-            <div className="analyticsQualityClean"><CheckIcon /> All active template keys are mapped.</div>
+            <div className="analyticsQualityClean">
+              <CheckIcon /> All active template keys are mapped.
+            </div>
           )}
         </Card>
 
-        <Card title="Campaign coverage" sub="Assigned campaign templates with no data in the selected period">
+        <Card
+          title="Campaign coverage"
+          sub="Assigned campaign templates with no data in the selected period"
+        >
           {report.orphanCampaignKeys.length ? (
             <div className="analyticsKeyList">
-              {report.orphanCampaignKeys.slice(0, 20).map((key) => <code key={key}>{key}</code>)}
+              {report.orphanCampaignKeys.slice(0, 20).map((key) => (
+                <code key={key}>{key}</code>
+              ))}
             </div>
           ) : (
-            <div className="analyticsQualityClean"><CheckIcon /> All assigned campaign keys have data in this period.</div>
+            <div className="analyticsQualityClean">
+              <CheckIcon /> All assigned campaign keys have data in this period.
+            </div>
           )}
         </Card>
       </div>
@@ -2786,8 +4503,12 @@ function buildCampaignBenchmark(groups) {
   const ctrStats = metricStats(source.map((g) => g.ctr ?? pctNum(g.uniqueClicks, g.delivered)))
   const ctorStats = metricStats(source.map((g) => g.ctor ?? pctNum(g.uniqueClicks, g.uniqueOpens)))
   const deliveryStats = metricStats(source.map((g) => g.delivery ?? pctNum(g.delivered, g.sent)))
-  const bounceStats = metricStats(source.map((g) => g.bounce ?? pctNum((g.hardBounces || 0) + (g.softBounces || 0), g.sent)))
-  const complaintStats = metricStats(source.map((g) => g.complaints ?? pctNum(g.complaints, g.delivered)))
+  const bounceStats = metricStats(
+    source.map((g) => g.bounce ?? pctNum((g.hardBounces || 0) + (g.softBounces || 0), g.sent)),
+  )
+  const complaintStats = metricStats(
+    source.map((g) => g.complaints ?? pctNum(g.complaints, g.delivered)),
+  )
   return {
     count: source.length,
     open: openStats.median,
@@ -2853,11 +4574,12 @@ function buildCampaignIntelligence(groups, benchmark) {
 
   const risky = groups.find((g) => g.complaints >= 0.1 || g.bounce >= 5 || g.delivery < 95)
   if (risky) {
-    const reason = risky.complaints >= 0.1
-      ? `${risky.complaints.toFixed(3)}% complaints`
-      : risky.bounce >= 5
-        ? `${risky.bounce.toFixed(1)}% bounce rate`
-        : `${risky.delivery.toFixed(1)}% delivery rate`
+    const reason =
+      risky.complaints >= 0.1
+        ? `${risky.complaints.toFixed(3)}% complaints`
+        : risky.bounce >= 5
+          ? `${risky.bounce.toFixed(1)}% bounce rate`
+          : `${risky.delivery.toFixed(1)}% delivery rate`
     out.push({
       tone: 'amber',
       icon: <AlertIcon />,
@@ -2866,9 +4588,7 @@ function buildCampaignIntelligence(groups, benchmark) {
     })
   }
 
-  const efficient = [...groups]
-    .filter((g) => g.open > 0)
-    .sort((a, b) => b.ctor - a.ctor)[0]
+  const efficient = [...groups].filter((g) => g.open > 0).sort((a, b) => b.ctor - a.ctor)[0]
   if (efficient && efficient.ctor >= Math.max(15, benchmark.ctor + 2)) {
     out.push({
       tone: 'purple',
@@ -2882,7 +4602,7 @@ function buildCampaignIntelligence(groups, benchmark) {
 }
 
 function campaignPerformanceScore(metrics, benchmark) {
-  const relative = (value, base, scale) => base ? (value - base) / scale : 0
+  const relative = (value, base, scale) => (base ? (value - base) / scale : 0)
   let score = 75
   score += Math.max(-14, Math.min(14, relative(metrics.open, benchmark.open, 2.5) * 4))
   score += Math.max(-12, Math.min(12, relative(metrics.ctr, benchmark.ctr, 1.2) * 4))
@@ -2898,16 +4618,46 @@ function buildCampaign360Insights(name, metrics, prev, benchmark, regions, templ
   const openDelta = metrics.open - prev.open
   const ctrDelta = metrics.ctr - prev.ctr
   if (prev.open > 0 && Math.abs(openDelta) >= 2) {
-    out.push({ tone: openDelta > 0 ? 'green' : 'red', icon: <EyeIcon />, title: `${name} ${openDelta > 0 ? 'gained' : 'lost'} open-rate momentum`, text: `${Math.abs(openDelta).toFixed(1)}pp ${openDelta > 0 ? 'above' : 'below'} the previous comparable period.` })
+    out.push({
+      tone: openDelta > 0 ? 'green' : 'red',
+      icon: <EyeIcon />,
+      title: `${name} ${openDelta > 0 ? 'gained' : 'lost'} open-rate momentum`,
+      text: `${Math.abs(openDelta).toFixed(1)}pp ${openDelta > 0 ? 'above' : 'below'} the previous comparable period.`,
+    })
   }
   if (prev.ctr > 0 && Math.abs(ctrDelta) >= 1) {
-    out.push({ tone: ctrDelta > 0 ? 'purple' : 'amber', icon: <PointerIcon />, title: `CTR ${ctrDelta > 0 ? 'improved' : 'declined'}`, text: `${metrics.ctr.toFixed(1)}% CTR, ${Math.abs(ctrDelta).toFixed(1)}pp ${ctrDelta > 0 ? 'up' : 'down'} versus the previous period.` })
+    out.push({
+      tone: ctrDelta > 0 ? 'purple' : 'amber',
+      icon: <PointerIcon />,
+      title: `CTR ${ctrDelta > 0 ? 'improved' : 'declined'}`,
+      text: `${metrics.ctr.toFixed(1)}% CTR, ${Math.abs(ctrDelta).toFixed(1)}pp ${ctrDelta > 0 ? 'up' : 'down'} versus the previous period.`,
+    })
   }
   const bestRegion = [...regions].filter((g) => g.delivered >= 100).sort((a, b) => b.ctr - a.ctr)[0]
-  if (bestRegion) out.push({ tone: 'blue', icon: <GlobeIcon />, title: `${bestRegion.label} drives the strongest regional CTR`, text: `${bestRegion.ctr.toFixed(1)}% CTR and ${fmt(bestRegion.uniqueClicks)} unique clicks in the current scope.` })
-  const topTemplate = [...templates].filter((g) => g.delivered >= 100).sort((a, b) => b.uniqueClicks - a.uniqueClicks)[0]
-  if (topTemplate) out.push({ tone: 'green', icon: <TemplateIcon />, title: `${topTemplate.label} contributes the most clicks`, text: `${fmt(topTemplate.uniqueClicks)} unique clicks at ${topTemplate.ctr.toFixed(1)}% CTR.` })
-  if (metrics.open < benchmark.open - Math.max(2, benchmark.openStats?.iqr || 0)) out.push({ tone: 'amber', icon: <AlertIcon />, title: 'Open rate is below the peer cohort', text: `${metrics.open.toFixed(1)}% versus a ${benchmark.open.toFixed(1)}% peer median.` })
+  if (bestRegion)
+    out.push({
+      tone: 'blue',
+      icon: <GlobeIcon />,
+      title: `${bestRegion.label} drives the strongest regional CTR`,
+      text: `${bestRegion.ctr.toFixed(1)}% CTR and ${fmt(bestRegion.uniqueClicks)} unique clicks in the current scope.`,
+    })
+  const topTemplate = [...templates]
+    .filter((g) => g.delivered >= 100)
+    .sort((a, b) => b.uniqueClicks - a.uniqueClicks)[0]
+  if (topTemplate)
+    out.push({
+      tone: 'green',
+      icon: <TemplateIcon />,
+      title: `${topTemplate.label} contributes the most clicks`,
+      text: `${fmt(topTemplate.uniqueClicks)} unique clicks at ${topTemplate.ctr.toFixed(1)}% CTR.`,
+    })
+  if (metrics.open < benchmark.open - Math.max(2, benchmark.openStats?.iqr || 0))
+    out.push({
+      tone: 'amber',
+      icon: <AlertIcon />,
+      title: 'Open rate is below the peer cohort',
+      text: `${metrics.open.toFixed(1)}% versus a ${benchmark.open.toFixed(1)}% peer median.`,
+    })
   return out.slice(0, 4)
 }
 
@@ -3051,9 +4801,9 @@ function analyzeDataQuality(rows, tplMap, campaigns) {
   const duplicateCount = duplicateKeys.reduce((sum, [, count]) => sum + (count - 1), 0)
 
   const activeKeys = new Set(templateKeys)
-  const orphanCampaignKeys = [...new Set(
-    campaigns.flatMap((c) => c.keys || []).filter((key) => key && !activeKeys.has(key)),
-  )].sort()
+  const orphanCampaignKeys = [
+    ...new Set(campaigns.flatMap((c) => c.keys || []).filter((key) => key && !activeKeys.has(key))),
+  ].sort()
 
   const issues = []
   if (unmappedKeys.length) {
@@ -3093,7 +4843,10 @@ function analyzeDataQuality(rows, tplMap, campaigns) {
       title: 'Metric integrity conflicts',
       count: integrityRows.length,
       text: 'One or more rows contain impossible relationships such as delivered > sent, opens > delivered, or total events below unique events.',
-      samples: integrityRows.map((r) => `${String(r.date || '').slice(0, 10)} · ${r.templateKey || r.templateName || 'unknown'}`),
+      samples: integrityRows.map(
+        (r) =>
+          `${String(r.date || '').slice(0, 10)} · ${r.templateKey || r.templateName || 'unknown'}`,
+      ),
     })
   }
   if (zeroSentWithActivity.length) {
@@ -3103,7 +4856,10 @@ function analyzeDataQuality(rows, tplMap, campaigns) {
       title: 'Activity exists with zero sent',
       count: zeroSentWithActivity.length,
       text: 'These rows report delivery or engagement while sent is zero, indicating a rollup or ingestion inconsistency.',
-      samples: zeroSentWithActivity.map((r) => `${String(r.date || '').slice(0, 10)} · ${r.templateKey || r.templateName || 'unknown'}`),
+      samples: zeroSentWithActivity.map(
+        (r) =>
+          `${String(r.date || '').slice(0, 10)} · ${r.templateKey || r.templateName || 'unknown'}`,
+      ),
     })
   }
   if (duplicateCount) {
@@ -3139,7 +4895,6 @@ function analyzeDataQuality(rows, tplMap, campaigns) {
   }
 }
 
-
 function languageOfRow(row) {
   if (row?.language) return normalizeLanguage(row.language)
   if (row?.source === 'onesignal_china') return 'Chinese'
@@ -3160,17 +4915,34 @@ function languageOfRow(row) {
 }
 
 function normalizeLanguage(value) {
-  const v = String(value || '').trim().toLowerCase()
+  const v = String(value || '')
+    .trim()
+    .toLowerCase()
   const map = {
-    en: 'English', english: 'English',
-    es: 'Spanish', spanish: 'Spanish',
-    pt: 'Portuguese', 'pt-br': 'Portuguese', portuguese: 'Portuguese',
-    ar: 'Arabic', arabic: 'Arabic',
-    de: 'German', german: 'German',
-    it: 'Italian', italian: 'Italian',
-    pl: 'Polish', polish: 'Polish',
-    ja: 'Japanese', jp: 'Japanese', japanese: 'Japanese',
-    zh: 'Chinese', cn: 'Chinese', tc: 'Chinese', 'zh-hans': 'Chinese', 'zh-hant': 'Chinese', chinese: 'Chinese',
+    en: 'English',
+    english: 'English',
+    es: 'Spanish',
+    spanish: 'Spanish',
+    pt: 'Portuguese',
+    'pt-br': 'Portuguese',
+    portuguese: 'Portuguese',
+    ar: 'Arabic',
+    arabic: 'Arabic',
+    de: 'German',
+    german: 'German',
+    it: 'Italian',
+    italian: 'Italian',
+    pl: 'Polish',
+    polish: 'Polish',
+    ja: 'Japanese',
+    jp: 'Japanese',
+    japanese: 'Japanese',
+    zh: 'Chinese',
+    cn: 'Chinese',
+    tc: 'Chinese',
+    'zh-hans': 'Chinese',
+    'zh-hant': 'Chinese',
+    chinese: 'Chinese',
   }
   return map[v] || String(value || 'Unknown')
 }
@@ -3192,10 +4964,22 @@ function buildMetricGroupBenchmark(groups) {
   const eligible = groups.filter((g) => g && g.delivered >= 100)
   const source = eligible.length ? eligible : groups
   return {
-    open: quantile(source.map((g) => g.open), 0.5),
-    ctr: quantile(source.map((g) => g.ctr), 0.5),
-    ctor: quantile(source.map((g) => g.ctor), 0.5),
-    delivery: quantile(source.map((g) => g.delivery), 0.5),
+    open: quantile(
+      source.map((g) => g.open),
+      0.5,
+    ),
+    ctr: quantile(
+      source.map((g) => g.ctr),
+      0.5,
+    ),
+    ctor: quantile(
+      source.map((g) => g.ctor),
+      0.5,
+    ),
+    delivery: quantile(
+      source.map((g) => g.delivery),
+      0.5,
+    ),
   }
 }
 
@@ -3205,15 +4989,32 @@ function buildAudienceOutliers(groups, benchmark) {
     const openDiff = g.open - benchmark.open
     const ctrDiff = g.ctr - benchmark.ctr
     if (openDiff >= 4 || ctrDiff >= 2) {
-      out.push({ label: g.label, tone: 'good', score: Math.max(openDiff / 4, ctrDiff / 2), text: `${openDiff >= 4 ? `${openDiff.toFixed(1)}pp above median open` : `${ctrDiff.toFixed(1)}pp above median CTR`}.` })
+      out.push({
+        label: g.label,
+        tone: 'good',
+        score: Math.max(openDiff / 4, ctrDiff / 2),
+        text: `${openDiff >= 4 ? `${openDiff.toFixed(1)}pp above median open` : `${ctrDiff.toFixed(1)}pp above median CTR`}.`,
+      })
     } else if (openDiff <= -4 || ctrDiff <= -2) {
-      out.push({ label: g.label, tone: 'bad', score: Math.max(Math.abs(openDiff) / 4, Math.abs(ctrDiff) / 2), text: `${openDiff <= -4 ? `${Math.abs(openDiff).toFixed(1)}pp below median open` : `${Math.abs(ctrDiff).toFixed(1)}pp below median CTR`}.` })
+      out.push({
+        label: g.label,
+        tone: 'bad',
+        score: Math.max(Math.abs(openDiff) / 4, Math.abs(ctrDiff) / 2),
+        text: `${openDiff <= -4 ? `${Math.abs(openDiff).toFixed(1)}pp below median open` : `${Math.abs(ctrDiff).toFixed(1)}pp below median CTR`}.`,
+      })
     }
   }
   return out.sort((a, b) => b.score - a.score).slice(0, 6)
 }
 
-function buildActiveAlerts({ current, previous, scopeCurrent, campaigns, tplMap, rules = DEFAULT_ALERT_RULES }) {
+function buildActiveAlerts({
+  current,
+  previous,
+  scopeCurrent,
+  campaigns,
+  tplMap,
+  rules = DEFAULT_ALERT_RULES,
+}) {
   const alerts = []
   const agg = sumRows(current)
   const prev = sumRows(previous)
@@ -3221,55 +5022,214 @@ function buildActiveAlerts({ current, previous, scopeCurrent, campaigns, tplMap,
   const pm = metricsFromAgg(prev)
   const quality = analyzeDataQuality(current, tplMap, campaigns)
 
-  if (agg.sent > 0 && m.delivery < rules.deliveryMin) alerts.push({ id: 'delivery', severity: m.delivery < rules.deliveryMin - 2 ? 'critical' : 'warning', category: 'Deliverability', metric: 'Delivery rate', title: 'Delivery rate below threshold', text: `Current delivery is ${m.delivery.toFixed(1)}%, below the configured ${rules.deliveryMin.toFixed(1)}% minimum.`, value: `${m.delivery.toFixed(1)}%` })
-  if (pm.open > 0 && m.open <= pm.open - rules.openDropMax) alerts.push({ id: 'open-drop', severity: m.open <= pm.open - rules.openDropMax * 1.7 ? 'critical' : 'warning', category: 'Engagement', metric: 'Open rate', title: 'Open rate declined materially', text: `Open rate is down ${(pm.open - m.open).toFixed(1)}pp versus the previous comparable period.`, value: `-${(pm.open - m.open).toFixed(1)}pp` })
-  if (pm.ctr > 0 && m.ctr <= pm.ctr - rules.ctrDropMax) alerts.push({ id: 'ctr-drop', severity: m.ctr <= pm.ctr - rules.ctrDropMax * 1.7 ? 'critical' : 'warning', category: 'Engagement', metric: 'CTR', title: 'CTR declined materially', text: `CTR is down ${(pm.ctr - m.ctr).toFixed(1)}pp versus the previous comparable period.`, value: `-${(pm.ctr - m.ctr).toFixed(1)}pp` })
-  if (m.complaints >= rules.complaintMax) alerts.push({ id: 'complaints', severity: m.complaints >= rules.complaintMax * 1.5 ? 'critical' : 'warning', category: 'Deliverability', metric: 'Complaints', title: 'Complaint rate above threshold', text: `Complaint rate is ${m.complaints.toFixed(3)}% against a configured maximum of ${rules.complaintMax.toFixed(3)}%.`, value: `${m.complaints.toFixed(3)}%` })
-  if (m.bounce >= rules.bounceMax) alerts.push({ id: 'bounce', severity: m.bounce >= rules.bounceMax * 1.4 ? 'critical' : 'warning', category: 'Deliverability', metric: 'Bounce rate', title: 'Bounce rate above threshold', text: `Combined hard + soft bounce is ${m.bounce.toFixed(1)}%, above the ${rules.bounceMax.toFixed(1)}% maximum.`, value: `${m.bounce.toFixed(1)}%` })
-  if (m.unsub >= rules.unsubscribeMax) alerts.push({ id: 'unsubscribe', severity: m.unsub >= rules.unsubscribeMax * 1.5 ? 'critical' : 'warning', category: 'Audience', metric: 'Unsubscribe', title: 'Unsubscribe rate above threshold', text: `Unsubscribe rate is ${m.unsub.toFixed(2)}%, above the ${rules.unsubscribeMax.toFixed(2)}% maximum.`, value: `${m.unsub.toFixed(2)}%` })
-  if (quality.score < rules.dataQualityMin) alerts.push({ id: 'data-quality', severity: quality.score < rules.dataQualityMin - 15 ? 'critical' : 'warning', category: 'Data quality', metric: 'Quality score', title: 'Data quality is below threshold', text: `${quality.issues.length} issue type${quality.issues.length === 1 ? '' : 's'} detected in the current scope.`, value: `${quality.score}/100` })
+  if (agg.sent > 0 && m.delivery < rules.deliveryMin)
+    alerts.push({
+      id: 'delivery',
+      severity: m.delivery < rules.deliveryMin - 2 ? 'critical' : 'warning',
+      category: 'Deliverability',
+      metric: 'Delivery rate',
+      title: 'Delivery rate below threshold',
+      text: `Current delivery is ${m.delivery.toFixed(1)}%, below the configured ${rules.deliveryMin.toFixed(1)}% minimum.`,
+      value: `${m.delivery.toFixed(1)}%`,
+    })
+  if (pm.open > 0 && m.open <= pm.open - rules.openDropMax)
+    alerts.push({
+      id: 'open-drop',
+      severity: m.open <= pm.open - rules.openDropMax * 1.7 ? 'critical' : 'warning',
+      category: 'Engagement',
+      metric: 'Open rate',
+      title: 'Open rate declined materially',
+      text: `Open rate is down ${(pm.open - m.open).toFixed(1)}pp versus the previous comparable period.`,
+      value: `-${(pm.open - m.open).toFixed(1)}pp`,
+    })
+  if (pm.ctr > 0 && m.ctr <= pm.ctr - rules.ctrDropMax)
+    alerts.push({
+      id: 'ctr-drop',
+      severity: m.ctr <= pm.ctr - rules.ctrDropMax * 1.7 ? 'critical' : 'warning',
+      category: 'Engagement',
+      metric: 'CTR',
+      title: 'CTR declined materially',
+      text: `CTR is down ${(pm.ctr - m.ctr).toFixed(1)}pp versus the previous comparable period.`,
+      value: `-${(pm.ctr - m.ctr).toFixed(1)}pp`,
+    })
+  if (m.complaints >= rules.complaintMax)
+    alerts.push({
+      id: 'complaints',
+      severity: m.complaints >= rules.complaintMax * 1.5 ? 'critical' : 'warning',
+      category: 'Deliverability',
+      metric: 'Complaints',
+      title: 'Complaint rate above threshold',
+      text: `Complaint rate is ${m.complaints.toFixed(3)}% against a configured maximum of ${rules.complaintMax.toFixed(3)}%.`,
+      value: `${m.complaints.toFixed(3)}%`,
+    })
+  if (m.bounce >= rules.bounceMax)
+    alerts.push({
+      id: 'bounce',
+      severity: m.bounce >= rules.bounceMax * 1.4 ? 'critical' : 'warning',
+      category: 'Deliverability',
+      metric: 'Bounce rate',
+      title: 'Bounce rate above threshold',
+      text: `Combined hard + soft bounce is ${m.bounce.toFixed(1)}%, above the ${rules.bounceMax.toFixed(1)}% maximum.`,
+      value: `${m.bounce.toFixed(1)}%`,
+    })
+  if (m.unsub >= rules.unsubscribeMax)
+    alerts.push({
+      id: 'unsubscribe',
+      severity: m.unsub >= rules.unsubscribeMax * 1.5 ? 'critical' : 'warning',
+      category: 'Audience',
+      metric: 'Unsubscribe',
+      title: 'Unsubscribe rate above threshold',
+      text: `Unsubscribe rate is ${m.unsub.toFixed(2)}%, above the ${rules.unsubscribeMax.toFixed(2)}% maximum.`,
+      value: `${m.unsub.toFixed(2)}%`,
+    })
+  if (quality.score < rules.dataQualityMin)
+    alerts.push({
+      id: 'data-quality',
+      severity: quality.score < rules.dataQualityMin - 15 ? 'critical' : 'warning',
+      category: 'Data quality',
+      metric: 'Quality score',
+      title: 'Data quality is below threshold',
+      text: `${quality.issues.length} issue type${quality.issues.length === 1 ? '' : 's'} detected in the current scope.`,
+      value: `${quality.score}/100`,
+    })
 
   const campaignGroups = enrichCampaignGroups(buildCampaignGroups(scopeCurrent, campaigns))
   for (const g of campaignGroups.filter((x) => x.status.tone === 'bad').slice(0, 3)) {
-    alerts.push({ id: `campaign-${g.label}`, severity: 'warning', category: 'Campaign', metric: g.status.label, title: `${g.label} needs attention`, text: `${g.delivery.toFixed(1)}% delivery · ${g.bounce.toFixed(1)}% bounce · ${g.complaints.toFixed(3)}% complaints.`, value: g.status.label })
+    alerts.push({
+      id: `campaign-${g.label}`,
+      severity: 'warning',
+      category: 'Campaign',
+      metric: g.status.label,
+      title: `${g.label} needs attention`,
+      text: `${g.delivery.toFixed(1)}% delivery · ${g.bounce.toFixed(1)}% bounce · ${g.complaints.toFixed(3)}% complaints.`,
+      value: g.status.label,
+    })
   }
 
   const rank = { critical: 0, warning: 1, info: 2 }
   return alerts.sort((a, b) => rank[a.severity] - rank[b.severity])
 }
 
-function buildIntelligenceFeed({ current, previous, scopeCurrent, scopePrevious, campaigns, tplMap }) {
+function buildIntelligenceFeed({
+  current,
+  previous,
+  scopeCurrent,
+  scopePrevious,
+  campaigns,
+  tplMap,
+}) {
   const out = []
   const agg = sumRows(current)
   const prev = sumRows(previous)
   const m = metricsFromAgg(agg)
   const pm = metricsFromAgg(prev)
-  const campaignGroups = enrichCampaignGroups(buildCampaignGroups(scopeCurrent, campaigns), new Map(buildCampaignGroups(scopePrevious, campaigns).map((g) => [g.label, g])))
+  const campaignGroups = enrichCampaignGroups(
+    buildCampaignGroups(scopeCurrent, campaigns),
+    new Map(buildCampaignGroups(scopePrevious, campaigns).map((g) => [g.label, g])),
+  )
   const benchmark = buildCampaignBenchmark(campaignGroups)
   const quality = analyzeDataQuality(current, tplMap, campaigns)
 
   const risk = campaignGroups.find((g) => g.status.tone === 'bad')
-  if (risk) out.push({ severity: 'critical', category: 'CAMPAIGN', priority: 'High priority', title: `${risk.label} is outside healthy operating range`, text: `${risk.delivery.toFixed(1)}% delivery, ${risk.bounce.toFixed(1)}% bounce and ${risk.complaints.toFixed(3)}% complaints.`, action: 'Open Campaigns → 360° and isolate the region/template causing the issue.' })
+  if (risk)
+    out.push({
+      severity: 'critical',
+      category: 'CAMPAIGN',
+      priority: 'High priority',
+      title: `${risk.label} is outside healthy operating range`,
+      text: `${risk.delivery.toFixed(1)}% delivery, ${risk.bounce.toFixed(1)}% bounce and ${risk.complaints.toFixed(3)}% complaints.`,
+      action: 'Open Campaigns → 360° and isolate the region/template causing the issue.',
+    })
 
-  if (pm.open > 0 && m.open <= pm.open - 3) out.push({ severity: 'warning', category: 'ENGAGEMENT', priority: 'Watch', title: 'Open rate is losing momentum', text: `${m.open.toFixed(1)}% open rate is ${(pm.open - m.open).toFixed(1)}pp below the previous comparable period.`, action: 'Compare recent campaigns and review subject/template performance.' })
-  if (pm.ctr > 0 && m.ctr <= pm.ctr - 1.5) out.push({ severity: 'warning', category: 'ENGAGEMENT', priority: 'Watch', title: 'Click-through rate declined', text: `${m.ctr.toFixed(1)}% CTR is ${(pm.ctr - m.ctr).toFixed(1)}pp below the previous period.`, action: 'Review CTOR and template contribution to separate content from open-rate effects.' })
+  if (pm.open > 0 && m.open <= pm.open - 3)
+    out.push({
+      severity: 'warning',
+      category: 'ENGAGEMENT',
+      priority: 'Watch',
+      title: 'Open rate is losing momentum',
+      text: `${m.open.toFixed(1)}% open rate is ${(pm.open - m.open).toFixed(1)}pp below the previous comparable period.`,
+      action: 'Compare recent campaigns and review subject/template performance.',
+    })
+  if (pm.ctr > 0 && m.ctr <= pm.ctr - 1.5)
+    out.push({
+      severity: 'warning',
+      category: 'ENGAGEMENT',
+      priority: 'Watch',
+      title: 'Click-through rate declined',
+      text: `${m.ctr.toFixed(1)}% CTR is ${(pm.ctr - m.ctr).toFixed(1)}pp below the previous period.`,
+      action: 'Review CTOR and template contribution to separate content from open-rate effects.',
+    })
 
   const regions = metricGroups(current, 'region', 'region').filter((g) => g.delivered >= 100)
   const regionBench = buildMetricGroupBenchmark(regions)
   const weakRegion = [...regions].sort((a, b) => a.open - b.open)[0]
-  if (weakRegion && weakRegion.open <= regionBench.open - 4) out.push({ severity: 'warning', category: 'AUDIENCE', priority: 'Opportunity', title: `${weakRegion.label} is an audience outlier`, text: `${weakRegion.open.toFixed(1)}% open rate is ${(regionBench.open - weakRegion.open).toFixed(1)}pp below the regional median.`, action: 'Open Audience → Regions and compare channel/template mix.' })
+  if (weakRegion && weakRegion.open <= regionBench.open - 4)
+    out.push({
+      severity: 'warning',
+      category: 'AUDIENCE',
+      priority: 'Opportunity',
+      title: `${weakRegion.label} is an audience outlier`,
+      text: `${weakRegion.open.toFixed(1)}% open rate is ${(regionBench.open - weakRegion.open).toFixed(1)}pp below the regional median.`,
+      action: 'Open Audience → Regions and compare channel/template mix.',
+    })
 
-  const templates = metricGroups(current, 'templateKey', 'templateName').filter((g) => g.delivered >= 100)
+  const templates = metricGroups(current, 'templateKey', 'templateName').filter(
+    (g) => g.delivered >= 100,
+  )
   const tplBench = buildMetricGroupBenchmark(templates)
-  const highVolumeWeak = [...templates].filter((g) => g.sent >= quantile(templates.map((x) => x.sent), 0.65) && g.open < tplBench.open - 4).sort((a, b) => b.sent - a.sent)[0]
-  if (highVolumeWeak) out.push({ severity: 'warning', category: 'TEMPLATE', priority: 'Opportunity', title: `${highVolumeWeak.label} is a high-volume underperformer`, text: `${fmt(highVolumeWeak.sent)} sends at ${highVolumeWeak.open.toFixed(1)}% open rate, ${(tplBench.open - highVolumeWeak.open).toFixed(1)}pp below the template median.`, action: 'Review the template or reduce reuse before the next large send.' })
+  const highVolumeWeak = [...templates]
+    .filter(
+      (g) =>
+        g.sent >=
+          quantile(
+            templates.map((x) => x.sent),
+            0.65,
+          ) && g.open < tplBench.open - 4,
+    )
+    .sort((a, b) => b.sent - a.sent)[0]
+  if (highVolumeWeak)
+    out.push({
+      severity: 'warning',
+      category: 'TEMPLATE',
+      priority: 'Opportunity',
+      title: `${highVolumeWeak.label} is a high-volume underperformer`,
+      text: `${fmt(highVolumeWeak.sent)} sends at ${highVolumeWeak.open.toFixed(1)}% open rate, ${(tplBench.open - highVolumeWeak.open).toFixed(1)}pp below the template median.`,
+      action: 'Review the template or reduce reuse before the next large send.',
+    })
 
-  if (quality.score < 90) out.push({ severity: quality.score < 75 ? 'critical' : 'warning', category: 'DATA QUALITY', priority: 'Foundation', title: `Data quality score is ${quality.score}/100`, text: `${quality.issues.length} issue type${quality.issues.length === 1 ? '' : 's'} can reduce confidence in comparisons and attribution.`, action: 'Open Data Quality and resolve integrity/mapping issues first.' })
+  if (quality.score < 90)
+    out.push({
+      severity: quality.score < 75 ? 'critical' : 'warning',
+      category: 'DATA QUALITY',
+      priority: 'Foundation',
+      title: `Data quality score is ${quality.score}/100`,
+      text: `${quality.issues.length} issue type${quality.issues.length === 1 ? '' : 's'} can reduce confidence in comparisons and attribution.`,
+      action: 'Open Data Quality and resolve integrity/mapping issues first.',
+    })
 
-  const strong = [...campaignGroups].filter((g) => g.status.tone === 'good').sort((a, b) => (b.open - benchmark.open) + (b.ctr - benchmark.ctr))[0]
-  if (strong) out.push({ severity: 'positive', category: 'OPPORTUNITY', priority: 'Learn', title: `${strong.label} is outperforming its peer cohort`, text: `${strong.open.toFixed(1)}% open and ${strong.ctr.toFixed(1)}% CTR versus ${benchmark.open.toFixed(1)}% / ${benchmark.ctr.toFixed(1)}% medians.`, action: 'Use the 360° view to identify the region and template contribution worth repeating.' })
+  const strong = [...campaignGroups]
+    .filter((g) => g.status.tone === 'good')
+    .sort((a, b) => b.open - benchmark.open + (b.ctr - benchmark.ctr))[0]
+  if (strong)
+    out.push({
+      severity: 'positive',
+      category: 'OPPORTUNITY',
+      priority: 'Learn',
+      title: `${strong.label} is outperforming its peer cohort`,
+      text: `${strong.open.toFixed(1)}% open and ${strong.ctr.toFixed(1)}% CTR versus ${benchmark.open.toFixed(1)}% / ${benchmark.ctr.toFixed(1)}% medians.`,
+      action: 'Use the 360° view to identify the region and template contribution worth repeating.',
+    })
 
-  if (!out.length) out.push({ severity: 'positive', category: 'SYSTEM', priority: 'Healthy', title: 'No material negative signals detected', text: 'Current engagement, deliverability and data quality are within the dashboard’s actionable ranges.', action: 'Use Campaign Comparison to look for optimization opportunities rather than remediation.' })
+  if (!out.length)
+    out.push({
+      severity: 'positive',
+      category: 'SYSTEM',
+      priority: 'Healthy',
+      title: 'No material negative signals detected',
+      text: 'Current engagement, deliverability and data quality are within the dashboard’s actionable ranges.',
+      action:
+        'Use Campaign Comparison to look for optimization opportunities rather than remediation.',
+    })
 
   const rank = { critical: 0, warning: 1, positive: 2 }
   return out.sort((a, b) => rank[a.severity] - rank[b.severity]).slice(0, 6)
@@ -3405,7 +5365,9 @@ function buildOverviewIntelligence(agg, aggPrev, current) {
     }
   }
 
-  const templates = groupBy(current, 'templateKey', 'templateName').filter((g) => g.delivered >= 100)
+  const templates = groupBy(current, 'templateKey', 'templateName').filter(
+    (g) => g.delivered >= 100,
+  )
   const top = [...templates].sort(
     (a, b) => pctNum(b.uniqueClicks, b.delivered) - pctNum(a.uniqueClicks, a.delivered),
   )[0]
@@ -3482,7 +5444,11 @@ function buildWeeklyBrief(rows, campaigns, tplMap) {
       recommendation: 'No activity available.',
       text: 'Marketing Weekly Brief\n\nNo activity available in the latest 7-day window.',
       endDate: toDateKey(end),
-      endLabel: end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      endLabel: end.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }),
     }
   }
 
@@ -3530,7 +5496,9 @@ function buildWeeklyBrief(rows, campaigns, tplMap) {
     `Deliverability health is ${healthScore}/100 and reporting data quality is ${quality.score}/100.`,
   )
 
-  const recommendation = intelligence[0]?.action || intelligence[0]?.text ||
+  const recommendation =
+    intelligence[0]?.action ||
+    intelligence[0]?.text ||
     (healthScore < 90
       ? 'Review deliverability signals and isolate the campaigns or regions creating the health penalty.'
       : quality.score < 90
@@ -3538,7 +5506,11 @@ function buildWeeklyBrief(rows, campaigns, tplMap) {
         : 'Keep the strongest campaign/template pattern as the next test baseline and validate it against a comparable audience.')
 
   const endDate = toDateKey(end)
-  const endLabel = end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  const endLabel = end.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
   const text = [
     'Marketing Weekly Brief',
     `Week ending ${endLabel}`,
@@ -3560,10 +5532,22 @@ function buildWeeklyBrief(rows, campaigns, tplMap) {
     endDate,
     endLabel,
     metrics: [
-      { label: 'Open rate', value: `${m.open.toFixed(1)}%`, delta: hasPrior ? m.open - p.open : null },
+      {
+        label: 'Open rate',
+        value: `${m.open.toFixed(1)}%`,
+        delta: hasPrior ? m.open - p.open : null,
+      },
       { label: 'CTR', value: `${m.ctr.toFixed(1)}%`, delta: hasPrior ? m.ctr - p.ctr : null },
-      { label: 'Delivery', value: `${m.delivery.toFixed(1)}%`, delta: hasPrior ? m.delivery - p.delivery : null },
-      { label: 'Bounce', value: `${m.bounce.toFixed(1)}%`, delta: hasPrior ? m.bounce - p.bounce : null },
+      {
+        label: 'Delivery',
+        value: `${m.delivery.toFixed(1)}%`,
+        delta: hasPrior ? m.delivery - p.delivery : null,
+      },
+      {
+        label: 'Bounce',
+        value: `${m.bounce.toFixed(1)}%`,
+        delta: hasPrior ? m.bounce - p.bounce : null,
+      },
     ],
     bullets,
     recommendation,
@@ -3624,16 +5608,25 @@ function buildCampaignCalendarEntries(rows, campaigns) {
     if (!date) continue
     for (const campaign of matching) {
       const id = `${date}|${campaign.name}`
-      if (!groups.has(id)) groups.set(id, { date, month: date.slice(0, 7), campaign: campaign.name, color: campaign.color, rows: [] })
+      if (!groups.has(id))
+        groups.set(id, {
+          date,
+          month: date.slice(0, 7),
+          campaign: campaign.name,
+          color: campaign.color,
+          rows: [],
+        })
       groups.get(id).rows.push(row)
     }
   }
 
-  return [...groups.values()].map((group) => {
-    const agg = sumRows(group.rows)
-    const metrics = metricsFromAgg(agg)
-    return { ...group, ...agg, ...metrics }
-  }).sort((a, b) => a.date.localeCompare(b.date) || b.sent - a.sent)
+  return [...groups.values()]
+    .map((group) => {
+      const agg = sumRows(group.rows)
+      const metrics = metricsFromAgg(agg)
+      return { ...group, ...agg, ...metrics }
+    })
+    .sort((a, b) => a.date.localeCompare(b.date) || b.sent - a.sent)
 }
 
 function buildTemplateFatigue(rows, tplMap) {
@@ -3651,7 +5644,10 @@ function buildTemplateFatigue(rows, tplMap) {
 
   const out = []
   for (const [key, byDate] of templates.entries()) {
-    const name = tplMap[key]?.name || [...byDate.values()].flat().find((r) => r.templateName)?.templateName || key
+    const name =
+      tplMap[key]?.name ||
+      [...byDate.values()].flat().find((r) => r.templateName)?.templateName ||
+      key
     const family = tplMap[key]?.family || familyOfName(name)
     const points = [...byDate.entries()]
       .map(([date, dayRows]) => {
@@ -3682,12 +5678,16 @@ function buildTemplateFatigue(rows, tplMap) {
     if (compareSize) {
       const priorPoints = points.slice(-(compareSize * 2), -compareSize)
       const recentPoints = points.slice(-compareSize)
-      const aggregatePoints = (list) => list.reduce((acc, point) => {
-        acc.delivered += point.delivered
-        acc.opens += point.uniqueOpens
-        acc.clicks += point.uniqueClicks
-        return acc
-      }, { delivered: 0, opens: 0, clicks: 0 })
+      const aggregatePoints = (list) =>
+        list.reduce(
+          (acc, point) => {
+            acc.delivered += point.delivered
+            acc.opens += point.uniqueOpens
+            acc.clicks += point.uniqueClicks
+            return acc
+          },
+          { delivered: 0, opens: 0, clicks: 0 },
+        )
       const prior = aggregatePoints(priorPoints)
       const recent = aggregatePoints(recentPoints)
       const priorOpen = pctNum(prior.opens, prior.delivered)
@@ -3696,8 +5696,12 @@ function buildTemplateFatigue(rows, tplMap) {
       recentCtr = pctNum(recent.clicks, recent.delivered)
       openDelta = recentOpen - priorOpen
       ctrDelta = recentCtr - priorCtr
-      fatigueScore = Math.max(0, Math.min(100, Math.round(Math.max(0, -openDelta) * 9 + Math.max(0, -ctrDelta) * 22)))
-      if ((openDelta <= -4 && ctrDelta <= -1) || ctrDelta <= -2 || openDelta <= -7) status = 'fatigued'
+      fatigueScore = Math.max(
+        0,
+        Math.min(100, Math.round(Math.max(0, -openDelta) * 9 + Math.max(0, -ctrDelta) * 22)),
+      )
+      if ((openDelta <= -4 && ctrDelta <= -1) || ctrDelta <= -2 || openDelta <= -7)
+        status = 'fatigued'
       else if (openDelta <= -3 || ctrDelta <= -1) status = 'watch'
       else status = 'stable'
     }
@@ -3719,7 +5723,10 @@ function buildTemplateFatigue(rows, tplMap) {
   }
 
   const rank = { fatigued: 0, watch: 1, stable: 2, insufficient: 3 }
-  return out.sort((a, b) => rank[a.status] - rank[b.status] || b.fatigueScore - a.fatigueScore || b.useCount - a.useCount)
+  return out.sort(
+    (a, b) =>
+      rank[a.status] - rank[b.status] || b.fatigueScore - a.fatigueScore || b.useCount - a.useCount,
+  )
 }
 
 function buildTemplateLibraryEntries(rows, tplMap) {
@@ -3731,34 +5738,42 @@ function buildTemplateLibraryEntries(rows, tplMap) {
     rowGroups.get(key).push(row)
   }
   const keys = new Set([...Object.keys(tplMap), ...rowGroups.keys()])
-  return [...keys].map((key) => {
-    const activeRows = rowGroups.get(key) || []
-    const mapped = Boolean(tplMap[key])
-    const label = tplMap[key]?.name || activeRows.find((r) => r.templateName)?.templateName || key
-    const family = tplMap[key]?.family || familyOfName(label)
-    const agg = sumRows(activeRows)
-    const metrics = metricsFromAgg(agg)
-    const lastUsed = activeRows.reduce((max, row) => {
-      const value = new Date(row.date).getTime()
-      return Number.isFinite(value) ? Math.max(max, value) : max
-    }, 0)
-    return {
-      key,
-      label,
-      family,
-      theme: themeOf(label),
-      mapped,
-      lastUsed: lastUsed ? new Date(lastUsed).toISOString() : null,
-      ...agg,
-      ...metrics,
-    }
-  }).sort((a, b) => b.sent - a.sent || a.label.localeCompare(b.label))
+  return [...keys]
+    .map((key) => {
+      const activeRows = rowGroups.get(key) || []
+      const mapped = Boolean(tplMap[key])
+      const label = tplMap[key]?.name || activeRows.find((r) => r.templateName)?.templateName || key
+      const family = tplMap[key]?.family || familyOfName(label)
+      const agg = sumRows(activeRows)
+      const metrics = metricsFromAgg(agg)
+      const lastUsed = activeRows.reduce((max, row) => {
+        const value = new Date(row.date).getTime()
+        return Number.isFinite(value) ? Math.max(max, value) : max
+      }, 0)
+      return {
+        key,
+        label,
+        family,
+        theme: themeOf(label),
+        mapped,
+        lastUsed: lastUsed ? new Date(lastUsed).toISOString() : null,
+        ...agg,
+        ...metrics,
+      }
+    })
+    .sort((a, b) => b.sent - a.sent || a.label.localeCompare(b.label))
 }
 
 function templateInitials(label) {
-  const parts = String(label || 'T').replace(/[^a-zA-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean)
+  const parts = String(label || 'T')
+    .replace(/[^a-zA-Z0-9 ]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
   if (!parts.length) return 'T'
-  return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join('')
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join('')
 }
 
 function countValues(rows, getter) {
@@ -3770,13 +5785,1006 @@ function countValues(rows, getter) {
   return map
 }
 
-const Screen = ({ children }) => (
-  <div className="analyticsLoadingScreen">{children}</div>
-)
+const KPI_DRILLDOWN_CONFIG = {
+  sent: {
+    label: 'Sent',
+    unit: '',
+    color: C.blue,
+    explainer: 'Where message volume came from across campaigns, regions, channels and templates.',
+  },
+  deliveryRate: {
+    label: 'Delivery rate',
+    unit: '%',
+    color: C.greenTxt,
+    explainer:
+      'Which parts of the selected scope are supporting or dragging overall delivery performance.',
+  },
+  openRate: {
+    label: 'Open rate',
+    unit: '%',
+    color: C.green,
+    explainer:
+      'Open efficiency by campaign, region, channel and template. Use it to isolate where engagement differs.',
+  },
+  ctr: {
+    label: 'CTR',
+    unit: '%',
+    color: C.purple,
+    explainer: 'Unique click efficiency by campaign, region, channel and template.',
+  },
+  ctor: {
+    label: 'CTOR',
+    unit: '%',
+    color: C.purple,
+    explainer:
+      'Click-to-open efficiency, useful for separating subject/open performance from content performance.',
+  },
+  complaintRate: {
+    label: 'Complaint rate',
+    unit: '%',
+    color: C.red,
+    explainer:
+      'Where complaint risk is concentrated. Higher values deserve investigation, especially on meaningful volume.',
+  },
+  bounceRate: {
+    label: 'Bounce rate',
+    unit: '%',
+    color: C.red,
+    explainer: 'Hard + soft bounce concentration across the active scope.',
+  },
+  unsubRate: {
+    label: 'Unsubscribe rate',
+    unit: '%',
+    color: C.red,
+    explainer: 'Where unsubscribe pressure is highest across campaigns and audience dimensions.',
+  },
+}
 
-const Spinner = () => (
-  <div className="analyticsSpinner" aria-label="Loading" />
-)
+function metricValueFromAgg(metric, a) {
+  if (!a) return 0
+  if (metric === 'sent') return a.sent || 0
+  if (metric === 'deliveryRate') return pctNum(a.delivered, a.sent)
+  if (metric === 'openRate') return pctNum(a.uniqueOpens, a.delivered)
+  if (metric === 'ctr') return pctNum(a.uniqueClicks, a.delivered)
+  if (metric === 'ctor') return pctNum(a.uniqueClicks, a.uniqueOpens)
+  if (metric === 'complaintRate') return pctNum(a.complaints, a.delivered)
+  if (metric === 'bounceRate') return pctNum((a.hardBounces || 0) + (a.softBounces || 0), a.sent)
+  if (metric === 'unsubRate') return pctNum(a.unsubscribes, a.delivered)
+  return 0
+}
+
+function formatMetric(metric, value) {
+  if (!Number.isFinite(value)) return '—'
+  if (metric === 'sent') return fmt(Math.round(value))
+  if (metric === 'complaintRate') return `${value.toFixed(3)}%`
+  return `${value.toFixed(1)}%`
+}
+
+function buildScopeConfidence(rows, tplMap = {}) {
+  const agg = sumRows(rows || [])
+  const delivered = agg.delivered || 0
+  const rowCount = rows?.length || 0
+  const mapped = (rows || []).filter((r) => r.templateKey && tplMap[r.templateKey]).length
+  const mappingCoverage = rowCount ? (mapped / rowCount) * 100 : 0
+  const volumeScore = Math.min(100, (Math.log10(Math.max(1, delivered)) / 5) * 100)
+  const rowScore = Math.min(100, (rowCount / 30) * 100)
+  const mappingScore = rowCount ? mappingCoverage : 0
+  const score = Math.max(
+    0,
+    Math.min(100, Math.round(volumeScore * 0.5 + rowScore * 0.25 + mappingScore * 0.25)),
+  )
+  const level = score >= 75 ? 'high' : score >= 48 ? 'medium' : 'low'
+  const label = level === 'high' ? 'High' : level === 'medium' ? 'Medium' : 'Low'
+  return {
+    score,
+    level,
+    label,
+    delivered,
+    rows: rowCount,
+    mappingCoverage,
+    detail: `${fmt(delivered)} delivered across ${fmt(rowCount)} rollup rows · ${mappingCoverage.toFixed(0)}% of rows have a canonical template mapping.`,
+  }
+}
+
+function confidenceForMetric(rows, metric) {
+  const agg = sumRows(rows || [])
+  let denominator = agg.delivered || 0
+  if (metric === 'sent' || metric === 'deliveryRate' || metric === 'bounceRate')
+    denominator = agg.sent || 0
+  if (metric === 'ctor') denominator = agg.uniqueOpens || 0
+  const rowCount = rows?.length || 0
+  const volumeScore = Math.min(100, (Math.log10(Math.max(1, denominator)) / 5) * 100)
+  const breadthScore = Math.min(100, (rowCount / 20) * 100)
+  const score = Math.max(0, Math.min(100, Math.round(volumeScore * 0.72 + breadthScore * 0.28)))
+  const level = score >= 76 ? 'high' : score >= 48 ? 'medium' : 'low'
+  return {
+    score,
+    level,
+    label: level === 'high' ? 'High' : level === 'medium' ? 'Medium' : 'Low',
+    detail: `${fmt(denominator)} ${metric === 'ctor' ? 'unique opens' : metric === 'sent' ? 'sent messages' : 'eligible messages'} across ${fmt(rowCount)} rollup rows support this KPI.`,
+  }
+}
+
+function buildKpiBreakdowns(metric, rows, campaigns, tplMap) {
+  const make = (groups) =>
+    groups
+      .map(({ label, rows: list }) => {
+        const agg = sumRows(list)
+        return { label: label || 'Unknown', agg, value: metricValueFromAgg(metric, agg) }
+      })
+      .filter((item) => item.agg.sent > 0 || item.agg.delivered > 0)
+      .sort((a, b) => b.value - a.value)
+
+  const mapDimension = (getter) => {
+    const map = new Map()
+    for (const row of rows || []) {
+      const label = getter(row) || 'Unknown'
+      if (!map.has(label)) map.set(label, [])
+      map.get(label).push(row)
+    }
+    return make([...map.entries()].map(([label, list]) => ({ label, rows: list })))
+  }
+
+  const campaignRows = []
+  const assignedKeys = new Set()
+  for (const campaign of campaigns || []) {
+    const keySet = new Set(campaign.keys || [])
+    for (const key of keySet) assignedKeys.add(key)
+    const list = (rows || []).filter((row) => keySet.has(row.templateKey))
+    if (list.length) campaignRows.push({ label: campaign.name, rows: list })
+  }
+  const unassigned = (rows || []).filter((row) => !assignedKeys.has(row.templateKey))
+  if (unassigned.length) campaignRows.push({ label: 'Unassigned', rows: unassigned })
+
+  return {
+    Campaign: make(campaignRows),
+    Region: mapDimension((row) => row.region || 'Unknown'),
+    Channel: mapDimension(
+      (row) => SOURCE_LABEL[row.source] || row.channel || row.source || 'Unknown',
+    ),
+    Template: mapDimension(
+      (row) => tplMap[row.templateKey]?.name || row.templateName || row.templateKey || 'Unmapped',
+    ),
+  }
+}
+
+function mean(values) {
+  if (!values.length) return 0
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function stdDev(values, avg = mean(values)) {
+  if (values.length < 2) return 0
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / (values.length - 1))
+}
+
+function dailyMetricSeries(rows, metric) {
+  const byDate = new Map()
+  for (const row of rows || []) {
+    const key = toDateKey(row.date)
+    if (!key) continue
+    if (!byDate.has(key)) byDate.set(key, [])
+    byDate.get(key).push(row)
+  }
+  return [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, list]) => ({ date, value: metricValueFromAgg(metric, sumRows(list)) }))
+    .filter((item) => Number.isFinite(item.value))
+}
+
+function rollingMetricSeries(rows, metric, windowDays = 7) {
+  const byDate = new Map()
+  for (const row of rows || []) {
+    const key = toDateKey(row.date)
+    if (!key) continue
+    if (!byDate.has(key)) byDate.set(key, [])
+    byDate.get(key).push(row)
+  }
+  const dates = [...byDate.keys()].sort()
+  if (dates.length < windowDays) return dailyMetricSeries(rows, metric)
+  const out = []
+  for (let i = windowDays - 1; i < dates.length; i++) {
+    const windowRows = []
+    for (let j = i - windowDays + 1; j <= i; j++) windowRows.push(...(byDate.get(dates[j]) || []))
+    out.push({ date: dates[i], value: metricValueFromAgg(metric, sumRows(windowRows)) })
+  }
+  return out.filter((item) => Number.isFinite(item.value))
+}
+
+function buildStatisticalAnomalies(current, previous, campaigns, tplMap) {
+  if (!current?.length || !previous?.length) return []
+  const latestDate = Math.max(
+    ...current.map((row) => new Date(row.date).getTime()).filter(Number.isFinite),
+  )
+  if (!Number.isFinite(latestDate)) return []
+  const recentStart = latestDate - 6 * dayMs
+  const recentRows = current.filter((row) => new Date(row.date).getTime() >= recentStart)
+  const recentAgg = sumRows(recentRows.length ? recentRows : current)
+  const definitions = [
+    {
+      metric: 'deliveryRate',
+      label: 'Delivery rate',
+      minEffect: 1,
+      goodUp: true,
+      actionTab: 'Deliverability',
+    },
+    { metric: 'openRate', label: 'Open rate', minEffect: 2, goodUp: true, actionTab: 'Campaigns' },
+    { metric: 'ctr', label: 'CTR', minEffect: 1, goodUp: true, actionTab: 'Campaigns' },
+    {
+      metric: 'bounceRate',
+      label: 'Bounce rate',
+      minEffect: 1,
+      goodUp: false,
+      actionTab: 'Deliverability',
+    },
+    {
+      metric: 'complaintRate',
+      label: 'Complaint rate',
+      minEffect: 0.03,
+      goodUp: false,
+      actionTab: 'Deliverability',
+    },
+    {
+      metric: 'unsubRate',
+      label: 'Unsubscribe rate',
+      minEffect: 0.2,
+      goodUp: false,
+      actionTab: 'Deliverability',
+    },
+  ]
+  const out = []
+
+  for (const definition of definitions) {
+    const baseline = rollingMetricSeries(previous, definition.metric, 7).map((item) => item.value)
+    if (baseline.length < 5) continue
+    const avg = mean(baseline)
+    const sd = stdDev(baseline, avg)
+    const value = metricValueFromAgg(definition.metric, recentAgg)
+    const diff = value - avg
+    const z = sd > 0.0001 ? diff / sd : (diff / Math.max(definition.minEffect, 0.001)) * 2
+    if (Math.abs(diff) < definition.minEffect || Math.abs(z) < 2) continue
+    const positive = definition.goodUp ? diff > 0 : diff < 0
+    const severity = positive ? 'positive' : Math.abs(z) >= 3 ? 'critical' : 'warning'
+    const confidence = confidenceForMetric(
+      recentRows.length ? recentRows : current,
+      definition.metric,
+    )
+    out.push({
+      id: `anomaly-${definition.metric}-${toDateKey(new Date(latestDate))}-${current.length}-${value.toFixed(3)}`,
+      severity,
+      metric: definition.label,
+      title: `${definition.label} is ${Math.abs(diff).toFixed(definition.metric === 'complaintRate' ? 3 : 1)}pp ${diff > 0 ? 'above' : 'below'} historical baseline`,
+      text: `Recent value ${formatMetric(definition.metric, value)} vs ${formatMetric(definition.metric, avg)} baseline · ${Math.abs(z).toFixed(1)}σ from normal daily variation.`,
+      actionTab: definition.actionTab,
+      confidence,
+      z,
+    })
+  }
+
+  const campaignGroups = enrichCampaignGroups(buildCampaignGroups(current, campaigns || []))
+    .filter((group) => group.sent > 0 && group.status?.tone === 'bad')
+    .slice(0, 2)
+  for (const group of campaignGroups) {
+    out.push({
+      id: `campaign-risk-${group.label}-${toDateKey(new Date(latestDate))}`,
+      severity: 'warning',
+      metric: 'Campaign',
+      title: `${group.label} is outside its comparable-campaign operating range`,
+      text: `${group.open.toFixed(1)}% open · ${group.ctr.toFixed(1)}% CTR · ${group.delivery.toFixed(1)}% delivery.`,
+      actionTab: 'Campaigns',
+      confidence: buildScopeConfidence(
+        current.filter((row) =>
+          (campaigns.find((c) => c.name === group.label)?.keys || []).includes(row.templateKey),
+        ),
+        tplMap,
+      ),
+    })
+  }
+
+  const order = { critical: 0, warning: 1, positive: 2 }
+  return out.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9))
+}
+
+function buildNotificationFeed(anomalies, current, campaigns, tplMap) {
+  const items = [...(anomalies || [])]
+  const quality = analyzeDataQuality(current || [], tplMap || {}, campaigns || [])
+  if (quality.score < 90) {
+    items.push({
+      id: `data-quality-${quality.score}-${current?.length || 0}`,
+      severity: quality.score < 70 ? 'critical' : 'warning',
+      metric: 'Data quality',
+      title: `Data quality score is ${quality.score}/100`,
+      text: `${quality.issueCount || quality.issues?.length || 0} quality signal${(quality.issueCount || quality.issues?.length || 0) === 1 ? '' : 's'} detected in the current scope.`,
+      actionTab: 'Data Quality',
+      confidence: buildScopeConfidence(current, tplMap),
+    })
+  }
+  return items.slice(0, 20)
+}
+
+function formatRelativeTime(value) {
+  if (!value) return 'unknown time'
+  const timestamp = new Date(value).getTime()
+  if (!Number.isFinite(timestamp)) return 'unknown time'
+  const diff = Date.now() - timestamp
+  const min = Math.max(0, Math.round(diff / 60000))
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min}m ago`
+  const hours = Math.round(min / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.round(hours / 24)
+  if (days < 30) return `${days}d ago`
+  return new Date(timestamp).toLocaleDateString()
+}
+
+function DataConfidenceBadge({ confidence }) {
+  if (!confidence) return null
+  return (
+    <span
+      className={`analyticsConfidenceBadge ${confidence.level}`}
+      title={confidence.detail}
+      aria-label={`Data confidence: ${confidence.label}. ${confidence.detail}`}
+    >
+      <ConfidenceIcon />
+      <span>{confidence.label} confidence</span>
+      <strong>{confidence.score}</strong>
+    </span>
+  )
+}
+
+function AnomalySummary({ anomalies = [], confidence }) {
+  const visible = anomalies.slice(0, 3)
+  return (
+    <section className={`analyticsAnomalyStrip ${visible.length ? 'hasAnomalies' : 'healthy'}`}>
+      <div className="analyticsAnomalyStripHeader">
+        <div>
+          <span className="analyticsIntelEyebrow">AUTOMATIC ANOMALY DETECTION</span>
+          <strong>
+            {visible.length
+              ? `${anomalies.length} signal${anomalies.length === 1 ? '' : 's'} worth investigating`
+              : 'No material anomaly detected'}
+          </strong>
+        </div>
+        {confidence && <DataConfidenceBadge confidence={confidence} />}
+      </div>
+      {visible.length ? (
+        <div className="analyticsAnomalyStripGrid">
+          {visible.map((item) => (
+            <div className={`analyticsAnomalyMini ${item.severity}`} key={item.id}>
+              <div className="analyticsAnomalyMiniIcon">
+                <AlertIcon />
+              </div>
+              <div>
+                <span>{item.metric}</span>
+                <strong>{item.title}</strong>
+                <p>{item.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="analyticsHealthyInline">
+          <ShieldIcon />
+          <span>
+            Current performance sits inside the historical operating range for the selected scope.
+          </span>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function SavedViewsMenu({ views = [], current, user, onApply, onChanged }) {
+  const [open, setOpen] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [name, setName] = useState('')
+  const [visibility, setVisibility] = useState('personal')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (event) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false)
+    }
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [open])
+
+  const save = async (event) => {
+    event.preventDefault()
+    const clean = name.trim()
+    if (!clean || saving) return
+    setSaving(true)
+    setError('')
+    try {
+      const response = await fetch(`${API}/analytics-saved-views`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: clean,
+          visibility,
+          tab: current.tab,
+          days: Number(current.days) || 90,
+          campaign: current.campaign || 'All',
+          channel: current.channel || 'All',
+          region: current.region || 'All',
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok)
+        throw new Error(data?.message || data?.errors?.[0]?.message || 'Could not save this view.')
+      setName('')
+      setShowForm(false)
+      await onChanged?.()
+    } catch (err) {
+      setError(err?.message || 'Could not save this view.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const remove = async (event, view) => {
+    event.stopPropagation()
+    if (!view?.id) return
+    try {
+      const response = await fetch(`${API}/analytics-saved-views/${view.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!response.ok) throw new Error('Could not delete saved view.')
+      await onChanged?.()
+    } catch (err) {
+      setError(err?.message || 'Could not delete saved view.')
+    }
+  }
+
+  return (
+    <div className="analyticsSavedViews" ref={wrapRef}>
+      <button
+        type="button"
+        className="analyticsToolbarButton"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        <StarIcon />
+        <span>Views</span>
+        {views.length > 0 && <b>{views.length}</b>}
+        <ChevronDownIcon />
+      </button>
+
+      {open && (
+        <div className="analyticsSavedViewsMenu">
+          <div className="analyticsSavedViewsHeader">
+            <div>
+              <strong>Saved views</strong>
+              <span>Jump back to a filter + section combination.</span>
+            </div>
+            <button
+              type="button"
+              className="analyticsIconButton compact"
+              onClick={() => setShowForm((value) => !value)}
+              aria-label="Save current view"
+            >
+              <PlusIcon />
+            </button>
+          </div>
+
+          {showForm && (
+            <form className="analyticsSaveViewForm" onSubmit={save}>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. MENA Email · 30d"
+                autoFocus
+              />
+              <select
+                value={visibility}
+                onChange={(e) => setVisibility(e.target.value)}
+                aria-label="Saved view visibility"
+              >
+                <option value="personal">Personal</option>
+                <option value="team">Team</option>
+              </select>
+              <button
+                type="submit"
+                className="analyticsPrimaryButton"
+                disabled={!name.trim() || saving}
+              >
+                {saving ? <ButtonSpinner /> : <StarIcon />} {saving ? 'Saving…' : 'Save'}
+              </button>
+            </form>
+          )}
+
+          {error && (
+            <div className="analyticsInlineError">
+              <AlertIcon /> {error}
+            </div>
+          )}
+
+          <div className="analyticsSavedViewsList">
+            {views.length === 0 && (
+              <Empty>
+                Save your current filters once and reuse them without rebuilding the same view every
+                day.
+              </Empty>
+            )}
+            {views.map((view) => (
+              <div className="analyticsSavedViewRow" key={view.id}>
+                <button
+                  type="button"
+                  className="analyticsSavedViewApply"
+                  onClick={() => {
+                    onApply?.(view)
+                    setOpen(false)
+                  }}
+                >
+                  <span className="analyticsSavedViewIcon">
+                    <StarIcon />
+                  </span>
+                  <span className="analyticsSavedViewCopy">
+                    <strong>{view.name}</strong>
+                    <small>
+                      {view.tab || 'Overview'} · {view.days || 90}d ·{' '}
+                      {view.campaign || 'All campaigns'} · {view.channel || 'All channels'} ·{' '}
+                      {view.region || 'All regions'}
+                    </small>
+                  </span>
+                </button>
+                <span className={`analyticsViewVisibility ${view.visibility || 'personal'}`}>
+                  {view.visibility === 'team' ? 'Team' : 'Personal'}
+                </span>
+                {user?.superAdmin ||
+                String(typeof view.owner === 'object' ? view.owner?.id : view.owner) ===
+                  String(user?.id) ? (
+                  <button
+                    type="button"
+                    className="analyticsSavedViewDelete"
+                    onClick={(e) => remove(e, view)}
+                    aria-label={`Delete ${view.name}`}
+                  >
+                    <XIcon />
+                  </button>
+                ) : (
+                  <span className="analyticsSavedViewDeleteSpacer" />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CommandPalette({
+  tabs = [],
+  campaigns = [],
+  templates = [],
+  savedViews = [],
+  onClose,
+  onNavigate,
+  onCampaign,
+  onTemplate,
+  onSavedView,
+  onNewCampaign,
+}) {
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const match = (value) =>
+    !q ||
+    String(value || '')
+      .toLowerCase()
+      .includes(q)
+
+  const navMatches = tabs.filter((item) => match(item)).slice(0, 6)
+  const campaignMatches = campaigns
+    .filter((item) => match(`${item.name} ${item.description} ${item.status}`))
+    .slice(0, 6)
+  const templateMatches = templates
+    .filter((item) => match(`${item.name} ${item.key} ${item.family} ${item.theme}`))
+    .slice(0, 6)
+  const viewMatches = savedViews
+    .filter((item) => match(`${item.name} ${item.tab} ${item.campaign} ${item.region}`))
+    .slice(0, 5)
+  const actions = [
+    {
+      id: 'new-campaign',
+      label: 'Create a new campaign',
+      hint: 'Campaign Builder',
+      icon: <PlusIcon />,
+      run: onNewCampaign,
+    },
+    {
+      id: 'overview',
+      label: 'Go to Overview',
+      hint: 'Navigation',
+      icon: <HomeIcon />,
+      run: () => onNavigate?.('Overview'),
+    },
+    {
+      id: 'alerts',
+      label: 'Open Alerts',
+      hint: 'Health',
+      icon: <BellIcon />,
+      run: () => onNavigate?.('Alerts'),
+    },
+  ].filter((item) => match(`${item.label} ${item.hint}`))
+
+  const nothing =
+    !navMatches.length &&
+    !campaignMatches.length &&
+    !templateMatches.length &&
+    !viewMatches.length &&
+    !actions.length
+
+  return (
+    <div
+      className="analyticsCommandBackdrop no-print"
+      role="presentation"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
+    >
+      <div
+        className="analyticsCommandPalette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search analytics"
+      >
+        <div className="analyticsCommandSearch">
+          <SearchIcon />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search sections, campaigns, templates or views…"
+            autoFocus
+          />
+          <kbd>ESC</kbd>
+        </div>
+        <div className="analyticsCommandResults">
+          {actions.length > 0 && (
+            <CommandGroup
+              title="Quick actions"
+              items={actions.map((item) => ({ ...item, onClick: item.run }))}
+            />
+          )}
+          {viewMatches.length > 0 && (
+            <CommandGroup
+              title="Saved views"
+              items={viewMatches.map((item) => ({
+                label: item.name,
+                hint: `${item.tab} · ${item.days}d`,
+                icon: <StarIcon />,
+                onClick: () => onSavedView?.(item),
+              }))}
+            />
+          )}
+          {navMatches.length > 0 && (
+            <CommandGroup
+              title="Sections"
+              items={navMatches.map((item) => ({
+                label: item,
+                hint: NAV_GROUPS.find((g) => g.items.includes(item))?.label || 'Analytics',
+                icon: <NavIcon name={item} />,
+                onClick: () => onNavigate?.(item),
+              }))}
+            />
+          )}
+          {campaignMatches.length > 0 && (
+            <CommandGroup
+              title="Campaigns"
+              items={campaignMatches.map((item) => ({
+                label: item.name,
+                hint: `${item.status} · ${item.keys.length} templates`,
+                icon: <SendIcon />,
+                onClick: () => onCampaign?.(item.name),
+              }))}
+            />
+          )}
+          {templateMatches.length > 0 && (
+            <CommandGroup
+              title="Templates"
+              items={templateMatches.map((item) => ({
+                label: item.name,
+                hint: `${item.family} · ${item.key}`,
+                icon: <TemplateIcon />,
+                onClick: () => onTemplate?.(item),
+              }))}
+            />
+          )}
+          {nothing && (
+            <Empty>
+              No result matches “{query}”. Try a campaign name, template family, region view or
+              dashboard section.
+            </Empty>
+          )}
+        </div>
+        <div className="analyticsCommandFooter">
+          <span>
+            <kbd>⌘</kbd>
+            <kbd>K</kbd> open search
+          </span>
+          <span>
+            <kbd>ESC</kbd> close
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CommandGroup({ title, items }) {
+  return (
+    <section className="analyticsCommandGroup">
+      <span>{title}</span>
+      {items.map((item, index) => (
+        <button type="button" key={`${title}-${item.label}-${index}`} onClick={item.onClick}>
+          <i>{item.icon}</i>
+          <div>
+            <strong>{item.label}</strong>
+            <small>{item.hint}</small>
+          </div>
+          <ArrowRightIcon />
+        </button>
+      ))}
+    </section>
+  )
+}
+
+function NotificationsDrawer({ items = [], auditLogs = [], onClose, onNavigate }) {
+  const [view, setView] = useState('notifications')
+  return (
+    <div
+      className="analyticsDrawerBackdrop no-print"
+      role="presentation"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
+    >
+      <aside
+        className="analyticsNotificationsDrawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Notifications and activity"
+      >
+        <div className="analyticsDrawerHeader">
+          <div>
+            <span className="analyticsIntelEyebrow">MARKETING OPERATIONS</span>
+            <h2>Notifications & activity</h2>
+          </div>
+          <button
+            type="button"
+            className="analyticsModalClose"
+            onClick={onClose}
+            aria-label="Close notifications"
+          >
+            <XIcon />
+          </button>
+        </div>
+        <div className="analyticsDrawerTabs">
+          <button
+            type="button"
+            className={view === 'notifications' ? 'active' : ''}
+            onClick={() => setView('notifications')}
+          >
+            <BellIcon /> Notifications <span>{items.length}</span>
+          </button>
+          <button
+            type="button"
+            className={view === 'activity' ? 'active' : ''}
+            onClick={() => setView('activity')}
+          >
+            <ActivityIcon /> Activity <span>{auditLogs.length}</span>
+          </button>
+        </div>
+
+        <div className="analyticsDrawerBody">
+          {view === 'notifications' && (
+            <div className="analyticsNotificationList">
+              {items.length === 0 && (
+                <Empty>
+                  No active anomalies or data-quality warnings. This scope currently looks healthy.
+                </Empty>
+              )}
+              {items.map((item) => (
+                <button
+                  type="button"
+                  className={`analyticsNotificationItem ${item.severity}`}
+                  key={item.id}
+                  onClick={() => item.actionTab && onNavigate?.(item.actionTab)}
+                >
+                  <span className="analyticsNotificationItemIcon">
+                    <AlertIcon />
+                  </span>
+                  <span className="analyticsNotificationItemCopy">
+                    <small>{item.metric || item.category || 'Signal'}</small>
+                    <strong>{item.title}</strong>
+                    <p>{item.text}</p>
+                    {item.confidence && (
+                      <em>
+                        {item.confidence.label} confidence · score {item.confidence.score}
+                      </em>
+                    )}
+                  </span>
+                  {item.actionTab && <ArrowRightIcon />}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {view === 'activity' && (
+            <div className="analyticsAuditList">
+              {auditLogs.length === 0 && (
+                <Empty>No campaign or saved-view changes have been recorded yet.</Empty>
+              )}
+              {auditLogs.map((log) => (
+                <div className="analyticsAuditItem" key={log.id}>
+                  <span className={`analyticsAuditIcon action-${log.action || 'updated'}`}>
+                    <ActivityIcon />
+                  </span>
+                  <div>
+                    <strong>
+                      {log.summary ||
+                        `${log.actorName || 'User'} ${log.action || 'updated'} ${log.entityName || ''}`}
+                    </strong>
+                    <span>
+                      {formatRelativeTime(log.createdAt)} · {log.entityType || 'analytics'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+function KpiDrilldownModal({ metric, rows = [], campaigns = [], tplMap = {}, onClose }) {
+  const config = KPI_DRILLDOWN_CONFIG[metric] || KPI_DRILLDOWN_CONFIG.sent
+  const agg = sumRows(rows)
+  const value = metricValueFromAgg(metric, agg)
+  const confidence = confidenceForMetric(rows, metric)
+  const breakdowns = buildKpiBreakdowns(metric, rows, campaigns, tplMap)
+  const [dimension, setDimension] = useState('Campaign')
+  const active = breakdowns[dimension] || []
+
+  return (
+    <div
+      className="analyticsModalBackdrop no-print"
+      role="presentation"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
+    >
+      <div
+        className="analyticsKpiDrilldown"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${config.label} drill-down`}
+      >
+        <div className="analyticsBuilderHeader">
+          <div>
+            <span className="analyticsIntelEyebrow">KPI DRILL-DOWN</span>
+            <h2>{config.label}</h2>
+            <p>{config.explainer}</p>
+          </div>
+          <button
+            type="button"
+            className="analyticsModalClose"
+            onClick={onClose}
+            aria-label="Close KPI drill-down"
+          >
+            <XIcon />
+          </button>
+        </div>
+
+        <div className="analyticsKpiDrillSummary">
+          <div>
+            <span>Current value</span>
+            <strong>{formatMetric(metric, value)}</strong>
+          </div>
+          <div>
+            <span>Rows in scope</span>
+            <strong>{fmt(rows.length)}</strong>
+          </div>
+          <div>
+            <span>Delivered volume</span>
+            <strong>{fmt(agg.delivered)}</strong>
+          </div>
+          <DataConfidenceBadge confidence={confidence} />
+        </div>
+
+        <div className="analyticsKpiDimensionTabs">
+          {Object.keys(breakdowns).map((item) => (
+            <button
+              type="button"
+              key={item}
+              className={dimension === item ? 'active' : ''}
+              onClick={() => setDimension(item)}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+
+        {active.length ? (
+          <>
+            <div className="analyticsKpiDrillChart">
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart
+                  data={active.slice(0, 10)}
+                  layout="vertical"
+                  margin={{ top: 4, right: 30, bottom: 4, left: 100 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 10, fill: C.mid }}
+                    unit={config.unit || ''}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    tick={{ fontSize: 10, fill: C.mid }}
+                    width={95}
+                  />
+                  <Tooltip formatter={(v) => formatMetric(metric, Number(v))} />
+                  <Bar dataKey="value" fill={config.color} radius={[0, 5, 5, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="analyticsTableWrap">
+              <table className="analyticsDataTable">
+                <thead>
+                  <tr>
+                    <th>{dimension}</th>
+                    <th>Value</th>
+                    <th>Sent</th>
+                    <th>Delivered</th>
+                    <th>Share of delivered</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {active.slice(0, 20).map((item) => (
+                    <tr key={item.label}>
+                      <td>
+                        <strong>{item.label}</strong>
+                      </td>
+                      <td>
+                        <strong style={{ color: config.color }}>
+                          {formatMetric(metric, item.value)}
+                        </strong>
+                      </td>
+                      <td>{fmt(item.agg.sent)}</td>
+                      <td>{fmt(item.agg.delivered)}</td>
+                      <td>{pctNum(item.agg.delivered, agg.delivered).toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <Empty>
+            There is not enough data to break this KPI down by {dimension.toLowerCase()} in the
+            selected scope.
+          </Empty>
+        )}
+
+        <div className="analyticsMethodNote">
+          <ConfidenceIcon />
+          <span>
+            {confidence.detail} Drill-downs describe contribution and association; they do not prove
+            causality.
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const Screen = ({ children }) => <div className="analyticsLoadingScreen">{children}</div>
+
+const Spinner = () => <div className="analyticsSpinner" aria-label="Loading" />
 
 const Banner = ({ children }) => (
   <div className="analyticsWarning" role="alert">
@@ -3786,7 +6794,12 @@ const Banner = ({ children }) => (
 )
 
 const Empty = ({ children }) => (
-  <div className="analyticsEmpty">{children}</div>
+  <div className="analyticsEmpty">
+    <span className="analyticsEmptyIcon">
+      <SearchIcon />
+    </span>
+    <span>{children}</span>
+  </div>
 )
 
 const thR = {
@@ -3844,13 +6857,17 @@ function MetricDelta({ value, suffix = 'pp' }) {
   const up = value > 0
   return (
     <span className={`analyticsMetricDelta ${up ? 'up' : 'down'}`}>
-      {up ? '↑' : '↓'} {Math.abs(value).toFixed(1)}{suffix}
+      {up ? '↑' : '↓'} {Math.abs(value).toFixed(1)}
+      {suffix}
     </span>
   )
 }
 
 function HealthDimension({ label, value, target, good, max, inverse = false, digits = 1 }) {
-  const normalized = Math.max(0, Math.min(100, inverse ? 100 - (value / max) * 100 : (value / max) * 100))
+  const normalized = Math.max(
+    0,
+    Math.min(100, inverse ? 100 - (value / max) * 100 : (value / max) * 100),
+  )
   return (
     <div className="analyticsHealthDimension">
       <div className="analyticsHealthDimensionTop">
@@ -3887,7 +6904,9 @@ function Filter({ label, value, set, opts, icon }) {
       {icon && <span className="analyticsFilterIcon">{icon}</span>}
       <select value={value} onChange={(e) => set(e.target.value)} aria-label={label}>
         {opts.map(([v, l]) => (
-          <option key={v} value={v}>{l}</option>
+          <option key={v} value={v}>
+            {l}
+          </option>
         ))}
       </select>
       <ChevronDownIcon />
@@ -3895,20 +6914,58 @@ function Filter({ label, value, set, opts, icon }) {
   )
 }
 
-function Kpi({ ico, label, val, clr, sub, delta, goodUp, spark, sparkKey, accent = 'blue' }) {
+function Kpi({
+  ico,
+  label,
+  val,
+  clr,
+  sub,
+  delta,
+  goodUp,
+  spark,
+  sparkKey,
+  accent = 'blue',
+  confidence,
+  onClick,
+}) {
+  const interactive = typeof onClick === 'function'
   return (
-    <div className={`analyticsKpi analyticsKpi-${accent}`}>
+    <div
+      className={`analyticsKpi analyticsKpi-${accent} ${interactive ? 'interactive' : ''}`}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={
+        interactive
+          ? (event) => (event.key === 'Enter' || event.key === ' ') && onClick()
+          : undefined
+      }
+      aria-label={interactive ? `${label}. Open drill-down.` : undefined}
+    >
       <div className="analyticsKpiTop">
         <div className="analyticsKpiIcon">{ico}</div>
+        {confidence && (
+          <span className={`analyticsKpiConfidence ${confidence.level}`} title={confidence.detail}>
+            {confidence.label}
+          </span>
+        )}
       </div>
 
       <div className="analyticsKpiValueRow">
-        <span className="analyticsKpiValue" style={{ color: clr }}>{val}</span>
+        <span className="analyticsKpiValue" style={{ color: clr }}>
+          {val}
+        </span>
         <DeltaBadge delta={delta} goodUp={goodUp} />
       </div>
 
       <div className="analyticsKpiLabel">{label}</div>
       {sub && <div className="analyticsKpiSub">{sub}</div>}
+      {interactive && (
+        <div className="analyticsKpiExplore">
+          <span>Investigate</span>
+          <ArrowRightIcon />
+        </div>
+      )}
 
       {spark?.length > 1 && sparkKey && (
         <div className="analyticsSparkline" aria-hidden="true">
@@ -4085,43 +7142,360 @@ function NavIcon({ name }) {
   return <DataQualityIcon />
 }
 
-function HomeIcon() { return <IconSvg><path d="m3 10 9-7 9 7"/><path d="M5 9v11h14V9"/><path d="M9 20v-6h6v6"/></IconSvg> }
-function SendIcon() { return <IconSvg><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></IconSvg> }
-function TemplateIcon() { return <IconSvg><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></IconSvg> }
-function ChannelsIcon() { return <IconSvg><path d="M8.5 5.5a5 5 0 0 0 0 7M15.5 5.5a5 5 0 0 1 0 7"/><circle cx="12" cy="12" r="2"/><path d="M5.5 2.5a9 9 0 0 0 0 19M18.5 2.5a9 9 0 0 1 0 19"/></IconSvg> }
-function ClockIcon() { return <IconSvg><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></IconSvg> }
-function JourneyIcon() { return <IconSvg><circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h4a4 4 0 0 1 4 4v1"/><path d="m13 9 3 3 3-3"/><path d="M16 14v1a3 3 0 0 0 2 3"/></IconSvg> }
-function DeliverabilityIcon() { return <IconSvg><path d="M4 4h16v16H4z"/><path d="m7 15 3-3 2 2 5-6"/></IconSvg> }
-function DataQualityIcon() { return <IconSvg><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5"/><path d="m14 17 2 2 4-5"/></IconSvg> }
-function GlobeIcon() { return <IconSvg><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></IconSvg> }
-function BellIcon() { return <IconSvg><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></IconSvg> }
-function GridIcon() { return <IconSvg><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/></IconSvg> }
-function LogoutIcon() { return <IconSvg><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></IconSvg> }
-function SunIcon() { return <IconSvg><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></IconSvg> }
-function MoonIcon() { return <IconSvg><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3 6.5 6.5 0 0 0 21 12.8Z"/></IconSvg> }
-function CalendarIcon() { return <IconSvg size={16}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></IconSvg> }
-function ChevronDownIcon() { return <IconSvg size={14}><path d="m6 9 6 6 6-6"/></IconSvg> }
-function DownloadIcon() { return <IconSvg size={16}><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></IconSvg> }
-function CopyIcon() { return <IconSvg size={16}><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></IconSvg> }
-function SearchIcon() { return <IconSvg size={16}><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></IconSvg> }
-function ArrowRightIcon() { return <IconSvg size={16}><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></IconSvg> }
-function ArrowLeftIcon() { return <IconSvg size={16}><path d="M19 12H5"/><path d="m11 18-6-6 6-6"/></IconSvg> }
-function SparkleIcon() { return <IconSvg size={19}><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5Z"/><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7Z"/></IconSvg> }
-function MailIcon() { return <IconSvg><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></IconSvg> }
-function CheckIcon() { return <IconSvg><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m7 12 3 3 7-7"/></IconSvg> }
-function EyeIcon() { return <IconSvg><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></IconSvg> }
-function PointerIcon() { return <IconSvg><path d="m5 3 11 9-5 1 3 6-3 1.5-3-6-3 4Z"/></IconSvg> }
-function TargetIcon() { return <IconSvg><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M22 12h-3"/></IconSvg> }
-function FlagIcon() { return <IconSvg><path d="M5 21V4"/><path d="M5 5h12l-2 4 2 4H5"/></IconSvg> }
-function BounceIcon() { return <IconSvg><path d="M9 7H5v4"/><path d="M5 11a7 7 0 1 1 2 5"/></IconSvg> }
-function BanIcon() { return <IconSvg><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></IconSvg> }
-function TrendIcon() { return <IconSvg size={16}><path d="M3 17 9 11l4 4 8-9"/></IconSvg> }
-function BarsIcon() { return <IconSvg size={16}><path d="M5 20V10M12 20V4M19 20v-7"/></IconSvg> }
-function AlertIcon() { return <IconSvg size={17}><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></IconSvg> }
-function ShieldIcon() { return <IconSvg><path d="M12 22s8-3 8-10V5l-8-3-8 3v7c0 7 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></IconSvg> }
-function BoltIcon() { return <IconSvg><path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z"/></IconSvg> }
-function UsersIcon() { return <IconSvg><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></IconSvg> }
-
+function HomeIcon() {
+  return (
+    <IconSvg>
+      <path d="m3 10 9-7 9 7" />
+      <path d="M5 9v11h14V9" />
+      <path d="M9 20v-6h6v6" />
+    </IconSvg>
+  )
+}
+function SendIcon() {
+  return (
+    <IconSvg>
+      <path d="m22 2-7 20-4-9-9-4Z" />
+      <path d="M22 2 11 13" />
+    </IconSvg>
+  )
+}
+function TemplateIcon() {
+  return (
+    <IconSvg>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M8 8h8M8 12h8M8 16h5" />
+    </IconSvg>
+  )
+}
+function ChannelsIcon() {
+  return (
+    <IconSvg>
+      <path d="M8.5 5.5a5 5 0 0 0 0 7M15.5 5.5a5 5 0 0 1 0 7" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M5.5 2.5a9 9 0 0 0 0 19M18.5 2.5a9 9 0 0 1 0 19" />
+    </IconSvg>
+  )
+}
+function ClockIcon() {
+  return (
+    <IconSvg>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </IconSvg>
+  )
+}
+function JourneyIcon() {
+  return (
+    <IconSvg>
+      <circle cx="6" cy="6" r="2" />
+      <circle cx="18" cy="18" r="2" />
+      <path d="M8 6h4a4 4 0 0 1 4 4v1" />
+      <path d="m13 9 3 3 3-3" />
+      <path d="M16 14v1a3 3 0 0 0 2 3" />
+    </IconSvg>
+  )
+}
+function DeliverabilityIcon() {
+  return (
+    <IconSvg>
+      <path d="M4 4h16v16H4z" />
+      <path d="m7 15 3-3 2 2 5-6" />
+    </IconSvg>
+  )
+}
+function DataQualityIcon() {
+  return (
+    <IconSvg>
+      <path d="M4 4h16v16H4z" />
+      <path d="M8 9h8M8 13h5" />
+      <path d="m14 17 2 2 4-5" />
+    </IconSvg>
+  )
+}
+function GlobeIcon() {
+  return (
+    <IconSvg>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+    </IconSvg>
+  )
+}
+function BellIcon() {
+  return (
+    <IconSvg>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+      <path d="M10 21h4" />
+    </IconSvg>
+  )
+}
+function GridIcon() {
+  return (
+    <IconSvg>
+      <rect x="3" y="3" width="6" height="6" rx="1" />
+      <rect x="15" y="3" width="6" height="6" rx="1" />
+      <rect x="3" y="15" width="6" height="6" rx="1" />
+      <rect x="15" y="15" width="6" height="6" rx="1" />
+    </IconSvg>
+  )
+}
+function LogoutIcon() {
+  return (
+    <IconSvg>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="m16 17 5-5-5-5" />
+      <path d="M21 12H9" />
+    </IconSvg>
+  )
+}
+function SunIcon() {
+  return (
+    <IconSvg>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </IconSvg>
+  )
+}
+function MoonIcon() {
+  return (
+    <IconSvg>
+      <path d="M21 12.8A8.5 8.5 0 1 1 11.2 3 6.5 6.5 0 0 0 21 12.8Z" />
+    </IconSvg>
+  )
+}
+function CalendarIcon() {
+  return (
+    <IconSvg size={16}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4M8 3v4M3 10h18" />
+    </IconSvg>
+  )
+}
+function ChevronDownIcon() {
+  return (
+    <IconSvg size={14}>
+      <path d="m6 9 6 6 6-6" />
+    </IconSvg>
+  )
+}
+function DownloadIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 21h14" />
+    </IconSvg>
+  )
+}
+function CopyIcon() {
+  return (
+    <IconSvg size={16}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </IconSvg>
+  )
+}
+function SearchIcon() {
+  return (
+    <IconSvg size={16}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-4-4" />
+    </IconSvg>
+  )
+}
+function ArrowRightIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </IconSvg>
+  )
+}
+function PlusIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M12 5v14M5 12h14" />
+    </IconSvg>
+  )
+}
+function XIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="m6 6 12 12M18 6 6 18" />
+    </IconSvg>
+  )
+}
+function ArrowLeftIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M19 12H5" />
+      <path d="m11 18-6-6 6-6" />
+    </IconSvg>
+  )
+}
+function SparkleIcon() {
+  return (
+    <IconSvg size={19}>
+      <path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5Z" />
+      <path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7Z" />
+    </IconSvg>
+  )
+}
+function MailIcon() {
+  return (
+    <IconSvg>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </IconSvg>
+  )
+}
+function CheckIcon() {
+  return (
+    <IconSvg>
+      <rect x="3" y="3" width="18" height="18" rx="4" />
+      <path d="m7 12 3 3 7-7" />
+    </IconSvg>
+  )
+}
+function EyeIcon() {
+  return (
+    <IconSvg>
+      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="2.5" />
+    </IconSvg>
+  )
+}
+function PointerIcon() {
+  return (
+    <IconSvg>
+      <path d="m5 3 11 9-5 1 3 6-3 1.5-3-6-3 4Z" />
+    </IconSvg>
+  )
+}
+function TargetIcon() {
+  return (
+    <IconSvg>
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v3M22 12h-3" />
+    </IconSvg>
+  )
+}
+function FlagIcon() {
+  return (
+    <IconSvg>
+      <path d="M5 21V4" />
+      <path d="M5 5h12l-2 4 2 4H5" />
+    </IconSvg>
+  )
+}
+function BounceIcon() {
+  return (
+    <IconSvg>
+      <path d="M9 7H5v4" />
+      <path d="M5 11a7 7 0 1 1 2 5" />
+    </IconSvg>
+  )
+}
+function BanIcon() {
+  return (
+    <IconSvg>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m6 6 12 12" />
+    </IconSvg>
+  )
+}
+function TrendIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M3 17 9 11l4 4 8-9" />
+    </IconSvg>
+  )
+}
+function BarsIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M5 20V10M12 20V4M19 20v-7" />
+    </IconSvg>
+  )
+}
+function AlertIcon() {
+  return (
+    <IconSvg size={17}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 8v4M12 16h.01" />
+    </IconSvg>
+  )
+}
+function StarIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z" />
+    </IconSvg>
+  )
+}
+function EditIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+    </IconSvg>
+  )
+}
+function ArchiveIcon() {
+  return (
+    <IconSvg size={16}>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v11h14V8M9 12h6" />
+    </IconSvg>
+  )
+}
+function RestoreIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
+    </IconSvg>
+  )
+}
+function ActivityIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M3 12h4l2-5 4 10 2-5h6" />
+    </IconSvg>
+  )
+}
+function ConfidenceIcon() {
+  return (
+    <IconSvg size={16}>
+      <path d="M12 22s8-3 8-10V5l-8-3-8 3v7c0 7 8 10 8 10Z" />
+      <path d="m8.5 12 2.2 2.2 4.8-5" />
+    </IconSvg>
+  )
+}
+function ShieldIcon() {
+  return (
+    <IconSvg>
+      <path d="M12 22s8-3 8-10V5l-8-3-8 3v7c0 7 8 10 8 10Z" />
+      <path d="m9 12 2 2 4-4" />
+    </IconSvg>
+  )
+}
+function BoltIcon() {
+  return (
+    <IconSvg>
+      <path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z" />
+    </IconSvg>
+  )
+}
+function UsersIcon() {
+  return (
+    <IconSvg>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </IconSvg>
+  )
+}
 
 /* ---------------------------------------------------------------- Export */
 
@@ -4281,7 +7655,10 @@ function TimingTab({ events, current }) {
 
   if (events === null) {
     return (
-      <Card title="Best send time" sub="Loading delivered/open/click events for send-time attribution…">
+      <Card
+        title="Best send time"
+        sub="Loading delivered/open/click events for send-time attribution…"
+      >
         <Spinner />
       </Card>
     )
@@ -4291,7 +7668,7 @@ function TimingTab({ events, current }) {
 
   if (!events.length) {
     const fallback = buildDowPerformanceFromRows(current)
-    const values = fallback.map((item) => metric === 'delivered' ? item.delivered : item[metric])
+    const values = fallback.map((item) => (metric === 'delivered' ? item.delivered : item[metric]))
     const max = Math.max(0, ...values)
     const bestIndex = values.indexOf(max)
 
@@ -4309,7 +7686,10 @@ function TimingTab({ events, current }) {
           </div>
         </div>
 
-        <Card title="Day-of-week performance" sub="Fallback view from analytics-daily · hourly attribution requires raw delivered/open/click events">
+        <Card
+          title="Day-of-week performance"
+          sub="Fallback view from analytics-daily · hourly attribution requires raw delivered/open/click events"
+        >
           <TimingMetricPicker metric={metric} setMetric={setMetric} />
           <Banner>
             Hourly send-time analysis is unavailable for this range. The daily rollup can support a
@@ -4321,7 +7701,9 @@ function TimingTab({ events, current }) {
               const text = metric === 'delivered' ? fmt(value) : `${value.toFixed(1)}%`
               return (
                 <div className="analyticsDowHeatCell" key={item.day}>
-                  <div style={{ background: heatColor(value, max) }}><strong>{text}</strong></div>
+                  <div style={{ background: heatColor(value, max) }}>
+                    <strong>{text}</strong>
+                  </div>
                   <span>{item.day}</span>
                   <small>{fmt(item.delivered)} delivered</small>
                 </div>
@@ -4331,8 +7713,12 @@ function TimingTab({ events, current }) {
           <div className="analyticsTimingConclusion">
             <ClockIcon />
             <span>
-              Best day for <strong>{label.toLowerCase()}</strong>: <strong>{DOW[Math.max(0, bestIndex)]}</strong>
-              {metric !== 'delivered' && fallback[bestIndex] ? ` · ${values[bestIndex].toFixed(1)}%` : ''}.
+              Best day for <strong>{label.toLowerCase()}</strong>:{' '}
+              <strong>{DOW[Math.max(0, bestIndex)]}</strong>
+              {metric !== 'delivered' && fallback[bestIndex]
+                ? ` · ${values[bestIndex].toFixed(1)}%`
+                : ''}
+              .
             </span>
           </div>
         </Card>
@@ -4343,7 +7729,7 @@ function TimingTab({ events, current }) {
   const attribution = buildSendTimeAttribution(events)
   const grid = attribution.grid
   const flat = grid.flat()
-  const metricValue = (cell) => metric === 'delivered' ? cell.delivered : cell[metric]
+  const metricValue = (cell) => (metric === 'delivered' ? cell.delivered : cell[metric])
   const values = flat.map(metricValue)
   const max = Math.max(0, ...values)
   const qualified = flat.filter((cell) => cell.delivered >= 10)
@@ -4357,7 +7743,9 @@ function TimingTab({ events, current }) {
     const clicks = cells.reduce((sum, cell) => sum + cell.clicks, 0)
     return { day, delivered, openRate: pctNum(opens, delivered), ctr: pctNum(clicks, delivered) }
   })
-  const bestDay = [...byDay].filter((item) => item.delivered > 0).sort((a, b) => (metric === 'delivered' ? b.delivered - a.delivered : b[metric] - a[metric]))[0]
+  const bestDay = [...byDay]
+    .filter((item) => item.delivered > 0)
+    .sort((a, b) => (metric === 'delivered' ? b.delivered - a.delivered : b[metric] - a[metric]))[0]
   const matchRate = pctNum(attribution.attributed, attribution.identities)
 
   return (
@@ -4368,8 +7756,8 @@ function TimingTab({ events, current }) {
           <h2>Best historical send windows</h2>
           <p>
             Engagement is assigned back to the hour of the matched delivered event using recipient +
-            message/notification identity. This measures send-window performance rather than the hour
-            when somebody happened to open or click.
+            message/notification identity. This measures send-window performance rather than the
+            hour when somebody happened to open or click.
           </p>
         </div>
         <div className={`analyticsCoveragePill ${matchRate < 80 ? 'warning' : ''}`}>
@@ -4382,14 +7770,22 @@ function TimingTab({ events, current }) {
         <MiniStat
           label={`Best ${label.toLowerCase()} slot`}
           value={bestCell ? `${DOW[bestCell.d]} ${hh(bestCell.h)}` : '—'}
-          detail={bestCell ? `${metric === 'delivered' ? fmt(bestCell.delivered) : `${metricValue(bestCell).toFixed(1)}%`} · ${fmt(bestCell.delivered)} delivered` : 'No attributed delivery events'}
+          detail={
+            bestCell
+              ? `${metric === 'delivered' ? fmt(bestCell.delivered) : `${metricValue(bestCell).toFixed(1)}%`} · ${fmt(bestCell.delivered)} delivered`
+              : 'No attributed delivery events'
+          }
           tone="green"
           icon={<ClockIcon />}
         />
         <MiniStat
           label="Best day overall"
           value={bestDay?.day || '—'}
-          detail={bestDay ? `${metric === 'delivered' ? fmt(bestDay.delivered) : `${bestDay[metric].toFixed(1)}%`} ${label.toLowerCase()}` : 'No data'}
+          detail={
+            bestDay
+              ? `${metric === 'delivered' ? fmt(bestDay.delivered) : `${bestDay[metric].toFixed(1)}%`} ${label.toLowerCase()}`
+              : 'No data'
+          }
           tone="blue"
           icon={<CalendarIcon />}
         />
@@ -4419,7 +7815,9 @@ function TimingTab({ events, current }) {
             <thead>
               <tr>
                 <th />
-                {Array.from({ length: 24 }, (_, h) => <th key={h}>{h % 2 === 0 ? String(h).padStart(2, '0') : ''}</th>)}
+                {Array.from({ length: 24 }, (_, h) => (
+                  <th key={h}>{h % 2 === 0 ? String(h).padStart(2, '0') : ''}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -4436,7 +7834,9 @@ function TimingTab({ events, current }) {
                           style={{ background: heatColor(value, max) }}
                           title={`${DOW[d]} ${hh(h)} · ${display} ${label.toLowerCase()} · ${fmt(cell.delivered)} delivered · ${fmt(cell.opens)} opened · ${fmt(cell.clicks)} clicked`}
                         >
-                          {cell.delivered >= 10 && <span>{metric === 'delivered' ? fmt(value) : value.toFixed(0)}</span>}
+                          {cell.delivered >= 10 && (
+                            <span>{metric === 'delivered' ? fmt(value) : value.toFixed(0)}</span>
+                          )}
                         </div>
                       </td>
                     )
@@ -4449,22 +7849,32 @@ function TimingTab({ events, current }) {
 
         <div className="analyticsHeatLegend">
           <span>Low</span>
-          {[0.08, 0.22, 0.4, 0.6, 0.8, 1].map((t) => <i key={t} style={{ background: heatColor(t * max, max) }} />)}
+          {[0.08, 0.22, 0.4, 0.6, 0.8, 1].map((t) => (
+            <i key={t} style={{ background: heatColor(t * max, max) }} />
+          ))}
           <span>High</span>
           {bestCell && (
             <strong>
-              Peak: {DOW[bestCell.d]} {hh(bestCell.h)} · {metric === 'delivered' ? fmt(bestCell.delivered) : `${metricValue(bestCell).toFixed(1)}%`}
+              Peak: {DOW[bestCell.d]} {hh(bestCell.h)} ·{' '}
+              {metric === 'delivered'
+                ? fmt(bestCell.delivered)
+                : `${metricValue(bestCell).toFixed(1)}%`}
             </strong>
           )}
         </div>
       </Card>
 
-      <Card title="Day-of-week benchmark" sub="Aggregated from the same message-level send-time attribution">
+      <Card
+        title="Day-of-week benchmark"
+        sub="Aggregated from the same message-level send-time attribution"
+      >
         <div className="analyticsTimingDayGrid">
           {byDay.map((item) => (
             <div key={item.day} className={bestDay?.day === item.day ? 'best' : ''}>
               <span>{item.day}</span>
-              <strong>{metric === 'delivered' ? fmt(item.delivered) : `${item[metric].toFixed(1)}%`}</strong>
+              <strong>
+                {metric === 'delivered' ? fmt(item.delivered) : `${item[metric].toFixed(1)}%`}
+              </strong>
               <small>{fmt(item.delivered)} delivered</small>
             </div>
           ))}
@@ -4495,7 +7905,8 @@ function buildSendTimeAttribution(events) {
       continue
     }
     const key = `${event.channel || ''}|${providerId}|${recipient}`
-    if (!identities.has(key)) identities.set(key, { deliveredAt: null, opened: false, clicked: false })
+    if (!identities.has(key))
+      identities.set(key, { deliveredAt: null, opened: false, clicked: false })
     const item = identities.get(key)
     if (event.eventType === 'delivered') {
       const ts = new Date(event.timestamp).getTime()
@@ -4508,7 +7919,15 @@ function buildSendTimeAttribution(events) {
   }
 
   const grid = Array.from({ length: 7 }, (_, d) =>
-    Array.from({ length: 24 }, (_, h) => ({ d, h, delivered: 0, opens: 0, clicks: 0, openRate: 0, ctr: 0 })),
+    Array.from({ length: 24 }, (_, h) => ({
+      d,
+      h,
+      delivered: 0,
+      opens: 0,
+      clicks: 0,
+      openRate: 0,
+      ctr: 0,
+    })),
   )
   let attributed = 0
   for (const item of identities.values()) {
@@ -4534,7 +7953,15 @@ function buildSendTimeAttribution(events) {
 }
 
 function buildDowPerformanceFromRows(rows) {
-  const out = DOW.map((day) => ({ day, sent: 0, delivered: 0, opens: 0, clicks: 0, openRate: 0, ctr: 0 }))
+  const out = DOW.map((day) => ({
+    day,
+    sent: 0,
+    delivered: 0,
+    opens: 0,
+    clicks: 0,
+    openRate: 0,
+    ctr: 0,
+  }))
   for (const row of rows) {
     const date = new Date(row.date)
     if (Number.isNaN(date.getTime())) continue
@@ -4550,4 +7977,3 @@ function buildDowPerformanceFromRows(rows) {
   }
   return out
 }
-
