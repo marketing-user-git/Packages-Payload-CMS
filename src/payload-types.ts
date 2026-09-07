@@ -79,6 +79,8 @@ export interface Config {
     campaigns: Campaign;
     'analytics-saved-views': AnalyticsSavedView;
     'analytics-audit-logs': AnalyticsAuditLog;
+    'funnel-enrollment': FunnelEnrollment;
+    'send-log': SendLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -98,6 +100,8 @@ export interface Config {
     campaigns: CampaignsSelect<false> | CampaignsSelect<true>;
     'analytics-saved-views': AnalyticsSavedViewsSelect<false> | AnalyticsSavedViewsSelect<true>;
     'analytics-audit-logs': AnalyticsAuditLogsSelect<false> | AnalyticsAuditLogsSelect<true>;
+    'funnel-enrollment': FunnelEnrollmentSelect<false> | FunnelEnrollmentSelect<true>;
+    'send-log': SendLogSelect<false> | SendLogSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -107,8 +111,12 @@ export interface Config {
     defaultIDType: number;
   };
   fallbackLocale: null;
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    'funnel-config': FunnelConfig;
+  };
+  globalsSelect: {
+    'funnel-config': FunnelConfigSelect<false> | FunnelConfigSelect<true>;
+  };
   locale: null;
   widgets: {
     collections: CollectionsWidget;
@@ -478,6 +486,84 @@ export interface AnalyticsAuditLog {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "funnel-enrollment".
+ */
+export interface FunnelEnrollment {
+  id: number;
+  /**
+   * CRM external_id. Unique -> enrollment idempotency.
+   */
+  externalId: string;
+  /**
+   * KYC country (source for region + osApp).
+   */
+  country?: string | null;
+  /**
+   * OneSignal Culture tag, e.g. Int-en. Used by step/exclusion rules.
+   */
+  culture?: string | null;
+  language?: string | null;
+  /**
+   * Which sequence: ROW=16 emails, CNJP=11 (China OR Japan).
+   */
+  funnelRegion: 'ROW' | 'CNJP';
+  /**
+   * Which OneSignal app to send from. china ONLY for country===China; Japan uses global.
+   */
+  osApp: 'global' | 'china';
+  /**
+   * Sequence-level A/B, assigned once at enrollment. Stable for the whole funnel.
+   */
+  variant: 'A' | 'B';
+  state: 'in_progress' | 'converted' | 'completed';
+  currentStep?: string | null;
+  lastSentStep?: string | null;
+  /**
+   * 0-based index of the NEXT send.
+   */
+  sendIndex: number;
+  enrolledAt: string;
+  /**
+   * When the next send is due. Sender tick selects rows where this <= now.
+   */
+  nextSendAt?: string | null;
+  convertedAt?: string | null;
+  /**
+   * Last email ACTUALLY sent before conversion.
+   */
+  convertedAtStep?: string | null;
+  completedAt?: string | null;
+  paused?: boolean | null;
+  excluded?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "send-log".
+ */
+export interface SendLog {
+  id: number;
+  externalId: string;
+  stepId: string;
+  variant?: ('A' | 'B') | null;
+  /**
+   * Which OneSignal app sent it (matches NotificationsCache.source).
+   */
+  osApp?: ('global' | 'china') | null;
+  templateId?: string | null;
+  /**
+   * OneSignal notification_id — join key to analytics Events.
+   */
+  notificationId?: string | null;
+  attemptedAt: string;
+  result: 'sent' | 'skipped_converted' | 'skipped_no_recipient' | 'error';
+  errorDetail?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -547,6 +633,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'analytics-audit-logs';
         value: number | AnalyticsAuditLog;
+      } | null)
+    | ({
+        relationTo: 'funnel-enrollment';
+        value: number | FunnelEnrollment;
+      } | null)
+    | ({
+        relationTo: 'send-log';
+        value: number | SendLog;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -823,6 +917,49 @@ export interface AnalyticsAuditLogsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "funnel-enrollment_select".
+ */
+export interface FunnelEnrollmentSelect<T extends boolean = true> {
+  externalId?: T;
+  country?: T;
+  culture?: T;
+  language?: T;
+  funnelRegion?: T;
+  osApp?: T;
+  variant?: T;
+  state?: T;
+  currentStep?: T;
+  lastSentStep?: T;
+  sendIndex?: T;
+  enrolledAt?: T;
+  nextSendAt?: T;
+  convertedAt?: T;
+  convertedAtStep?: T;
+  completedAt?: T;
+  paused?: T;
+  excluded?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "send-log_select".
+ */
+export interface SendLogSelect<T extends boolean = true> {
+  externalId?: T;
+  stepId?: T;
+  variant?: T;
+  osApp?: T;
+  templateId?: T;
+  notificationId?: T;
+  attemptedAt?: T;
+  result?: T;
+  errorDetail?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
@@ -860,6 +997,285 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   batch?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "funnel-config".
+ */
+export interface FunnelConfig {
+  id: number;
+  /**
+   * Case-sensitive. Entry requires this STATUS.
+   */
+  statusRegisteredValue: string;
+  /**
+   * Case-sensitive. Convenience default for conversion.
+   */
+  statusActiveValue: string;
+  firstDelayHours: number;
+  intervalDays: number;
+  /**
+   * On enrollment, if OneSignal tags are not synced yet, retry this many times before discarding.
+   */
+  maxTagSyncRetries: number;
+  /**
+   * Only enroll users registered on/after this date. Protects against back-filling the whole DB. Leave empty to allow all.
+   */
+  enrollmentCutoffDate?: string | null;
+  cnjpCountries?:
+    | {
+        value: string;
+        id?: string | null;
+      }[]
+    | null;
+  chinaCountries?:
+    | {
+        value: string;
+        id?: string | null;
+      }[]
+    | null;
+  oneSignalApps?: {
+    globalAppId?: string | null;
+    /**
+     * n8n credential name for the global REST key.
+     */
+    globalKeyRef?: string | null;
+    chinaAppId?: string | null;
+    /**
+     * n8n credential name for the china REST key.
+     */
+    chinaKeyRef?: string | null;
+    /**
+     * App queried to READ tags/subscriptions at enrollment (usually the global app).
+     */
+    identityAppId?: string | null;
+  };
+  sequenceRow?:
+    | {
+        stepId: string;
+        id?: string | null;
+      }[]
+    | null;
+  sequenceCnjp?:
+    | {
+        stepId: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * global UUID for ROW + Japan. china UUID for country===China. A CN step needs both.
+   */
+  templates?:
+    | {
+        stepId: string;
+        variant: 'A' | 'B';
+        global?: string | null;
+        china?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  restrictedCountries?:
+    | {
+        value: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * e.g. CycleStatusName equals Crooked. Generic tag rules.
+   */
+  restrictionRules?:
+    | {
+        /**
+         * How to combine the conditions below.
+         */
+        match?: ('any' | 'all') | null;
+        /**
+         * Tag tests against the user's OneSignal tags. Empty rule matches nobody.
+         */
+        conditions?:
+          | {
+              /**
+               * OneSignal tag, e.g. STATUS, Country, Culture, CycleStatusName, TotalDepositsUSD
+               */
+              field: string;
+              op: 'equals' | 'not_equals' | 'in' | 'not_in' | 'prefix' | 'greater_than' | 'less_than' | 'exists';
+              /**
+               * For in/not_in use a comma list. Not needed for "exists".
+               */
+              value?: string | null;
+              id?: string | null;
+            }[]
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * User stays in the funnel but skips this step. Replaces the old CN/JP-only list; now works for any country/culture/tag.
+   */
+  stepRestrictions?:
+    | {
+        stepId: string;
+        /**
+         * How to combine the conditions below.
+         */
+        match?: ('any' | 'all') | null;
+        /**
+         * Tag tests against the user's OneSignal tags. Empty rule matches nobody.
+         */
+        conditions?:
+          | {
+              /**
+               * OneSignal tag, e.g. STATUS, Country, Culture, CycleStatusName, TotalDepositsUSD
+               */
+              field: string;
+              op: 'equals' | 'not_equals' | 'in' | 'not_in' | 'prefix' | 'greater_than' | 'less_than' | 'exists';
+              /**
+               * For in/not_in use a comma list. Not needed for "exists".
+               */
+              value?: string | null;
+              id?: string | null;
+            }[]
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * e.g. STATUS equals ACTIVE, OR TotalDepositsUSD greater_than 100. Checked before every send.
+   */
+  conversionRules?:
+    | {
+        /**
+         * How to combine the conditions below.
+         */
+        match?: ('any' | 'all') | null;
+        /**
+         * Tag tests against the user's OneSignal tags. Empty rule matches nobody.
+         */
+        conditions?:
+          | {
+              /**
+               * OneSignal tag, e.g. STATUS, Country, Culture, CycleStatusName, TotalDepositsUSD
+               */
+              field: string;
+              op: 'equals' | 'not_equals' | 'in' | 'not_in' | 'prefix' | 'greater_than' | 'less_than' | 'exists';
+              /**
+               * For in/not_in use a comma list. Not needed for "exists".
+               */
+              value?: string | null;
+              id?: string | null;
+            }[]
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "funnel-config_select".
+ */
+export interface FunnelConfigSelect<T extends boolean = true> {
+  statusRegisteredValue?: T;
+  statusActiveValue?: T;
+  firstDelayHours?: T;
+  intervalDays?: T;
+  maxTagSyncRetries?: T;
+  enrollmentCutoffDate?: T;
+  cnjpCountries?:
+    | T
+    | {
+        value?: T;
+        id?: T;
+      };
+  chinaCountries?:
+    | T
+    | {
+        value?: T;
+        id?: T;
+      };
+  oneSignalApps?:
+    | T
+    | {
+        globalAppId?: T;
+        globalKeyRef?: T;
+        chinaAppId?: T;
+        chinaKeyRef?: T;
+        identityAppId?: T;
+      };
+  sequenceRow?:
+    | T
+    | {
+        stepId?: T;
+        id?: T;
+      };
+  sequenceCnjp?:
+    | T
+    | {
+        stepId?: T;
+        id?: T;
+      };
+  templates?:
+    | T
+    | {
+        stepId?: T;
+        variant?: T;
+        global?: T;
+        china?: T;
+        id?: T;
+      };
+  restrictedCountries?:
+    | T
+    | {
+        value?: T;
+        id?: T;
+      };
+  restrictionRules?:
+    | T
+    | {
+        match?: T;
+        conditions?:
+          | T
+          | {
+              field?: T;
+              op?: T;
+              value?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  stepRestrictions?:
+    | T
+    | {
+        stepId?: T;
+        match?: T;
+        conditions?:
+          | T
+          | {
+              field?: T;
+              op?: T;
+              value?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  conversionRules?:
+    | T
+    | {
+        match?: T;
+        conditions?:
+          | T
+          | {
+              field?: T;
+              op?: T;
+              value?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

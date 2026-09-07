@@ -152,8 +152,8 @@ export default function AnalyticsDashboard({
 
   useEffect(() => onPopState(() => setTabState(readParam('tab', TABS) || 'Overview')), [])
   const [events, setEvents] = useState(null) // lazily loaded, Timing tab only
-  const [journeys, setJourneys] = useState(null) // lazily loaded, Journeys tab only
-  const [journeyErr, setJourneyErr] = useState('')
+  const [funnelStats, setFunnelStats] = useState(null) // lazily loaded, Journeys tab only
+  const [funnelErr, setFunnelErr] = useState('')
   const [savedViews, setSavedViews] = useState([])
   const [auditLogs, setAuditLogs] = useState([])
   const [commandOpen, setCommandOpen] = useState(false)
@@ -282,24 +282,23 @@ export default function AnalyticsDashboard({
   // A range change invalidates the cached events window.
   useEffect(() => setEvents(null), [days])
 
-  // Journey analytics comes from the existing JourneyTracking collection. Load it only
-  // when needed so the general analytics dashboard stays lightweight.
+  // RegFunnelOps stats: server-side Events ⋈ SendLog join. Loaded only on the
+  // Journeys tab; refetches when the global `days` range changes.
   useEffect(() => {
-    if (tab !== 'Journeys' || journeys !== null) return
-    setJourneyErr('')
-    fetch(`${API}/journey-tracking?limit=10000&depth=0&sort=-journeyStartedAt`, {
-      credentials: 'include',
-    })
+    if (tab !== 'Journeys') return
+    setFunnelErr('')
+    setFunnelStats(null)
+    fetch(`${API}/regfunnel/stats?days=${days}`, { credentials: 'include' })
       .then((r) => {
-        if (!r.ok) throw new Error('Journey request failed')
+        if (!r.ok) throw new Error('Funnel stats request failed')
         return r.json()
       })
-      .then((d) => setJourneys(d?.docs || []))
+      .then((d) => setFunnelStats(d || {}))
       .catch(() => {
-        setJourneyErr('Could not load journey tracking data.')
-        setJourneys([])
+        setFunnelErr('Could not load funnel stats.')
+        setFunnelStats({})
       })
-  }, [tab, journeys])
+  }, [tab, days])
 
   const campaignKeys = useMemo(() => {
     const c = campaigns.find((x) => x.name === campaign)
@@ -670,7 +669,7 @@ export default function AnalyticsDashboard({
             {tab === 'Channels' && <Channels current={current} />}
             {tab === 'Timing' && <TimingTab events={filteredEvents} current={current} />}
             {tab === 'Journeys' && (
-              <JourneyAnalytics journeys={journeys} error={journeyErr} days={days} />
+              <FunnelJourneyAnalytics stats={funnelStats} error={funnelErr} days={days} />
             )}
             {tab === 'Deliverability' && (
               <Deliverability
@@ -3768,283 +3767,399 @@ function Channels({ current }) {
   )
 }
 
-function JourneyAnalytics({ journeys, error, days }) {
+// ───────────────────────────────────────────────────────────────────────────
+// FunnelJourneyAnalytics — RegFunnelOps Journeys tab (A/B engagement)
+//
+// PASTE THIS INTO AnalyticsDashboard.jsx, replacing the old `JourneyAnalytics`
+// function (and delete `JourneyStepList`, which only the old tab used).
+// It relies on helpers already in that file: Card, MiniStat, Spinner, Banner,
+// fmt, pctNum, UsersIcon, CheckIcon, TargetIcon, ClockIcon.
+//
+// Data comes from /api/regfunnel/stats (server-side Events ⋈ SendLog join).
+// ───────────────────────────────────────────────────────────────────────────
+
+// Canonical step order so charts read top-to-bottom like the funnel.
+const FUNNEL_STEP_ORDER = [
+  '00_no_email_yet',
+  '01_tv_account_types',
+  '02_start_trading_easy',
+  '03_know_trading_costs',
+  '04_platform_choice',
+  '05_demo_trading',
+  '07_trading_easier',
+  '08_bonus_100',
+  '09_easytrade',
+  '10_vanilla_options',
+  '12_tradingview_integration',
+  '13_account_type_reminder',
+  '15_gold',
+  '16_mt5_gold_hook',
+  '17_first_deposit',
+  '18_trade_on_mt5',
+  '19_account_types_final',
+]
+const stepRank = (id) => {
+  const i = FUNNEL_STEP_ORDER.indexOf(id)
+  return i === -1 ? 999 : i
+}
+const stepLabel = (id) =>
+  id === '00_no_email_yet' ? 'Before 1st email' : id.replace(/^\d+_/, '').replace(/_/g, ' ')
+const regionLabel = (r) => (r === 'CNJP' ? 'CN / JP' : r === 'ROW' ? 'ROW' : r || 'Unknown')
+
+// Two-proportion z-test (A vs B conversion). Sequence-level, not per-email.
+function abSignificance(convA, nA, convB, nB) {
+  if (!nA || !nB) return { z: 0, level: 'n/a', label: 'Not enough data' }
+  const pA = convA / nA,
+    pB = convB / nB
+  const p = (convA + convB) / (nA + nB)
+  const se = Math.sqrt(p * (1 - p) * (1 / nA + 1 / nB))
+  if (!se) return { z: 0, level: 'n/a', label: 'No variance' }
+  const z = (pA - pB) / se
+  const az = Math.abs(z)
+  const small = nA < 100 || nB < 100
+  if (az >= 2.58)
+    return { z, level: '99%', label: `Significant (99%)${small ? ' · small sample' : ''}` }
+  if (az >= 1.96)
+    return { z, level: '95%', label: `Significant (95%)${small ? ' · small sample' : ''}` }
+  return { z, level: 'ns', label: `Not significant${small ? ' · small sample' : ''}` }
+}
+
+const sumBy = (rows, key) => rows.reduce((a, r) => a + Number(r[key] || 0), 0)
+
+function FunnelJourneyAnalytics({ stats, error, days }) {
   const [region, setRegion] = useState('All')
 
-  if (journeys === null) {
+  if (stats === null) {
     return (
-      <Card title="Journey analytics" sub="Loading journey tracking data…">
+      <Card title="Funnel analytics" sub="Loading RegFunnelOps stats…">
         <Spinner />
       </Card>
     )
   }
-
   if (error) return <Banner>{error}</Banner>
 
-  const regions = [...new Set(journeys.map((j) => j.region).filter(Boolean))].sort()
-  const anchor =
-    journeys.reduce((max, j) => {
-      const value = new Date(j.journeyStartedAt || j.journeyEndedAt || 0).getTime()
-      return Number.isFinite(value) ? Math.max(max, value) : max
-    }, 0) || Date.now()
-  const cutoff = anchor - days * dayMs
-  const scoped = journeys.filter((j) => {
-    const started = new Date(j.journeyStartedAt || j.journeyEndedAt || 0).getTime()
-    const inRange = !started || !Number.isFinite(started) || started >= cutoff
-    return inRange && (region === 'All' || j.region === region)
-  })
+  const inScope = (r) => region === 'All' || r.funnel_region === region
+  const states = (stats.states || []).filter(inScope)
+  const convByStep = (stats.convertedByStep || []).filter(inScope)
+  const curByStep = (stats.currentByStep || []).filter(inScope)
+  const eng = (stats.engagement || []).filter(inScope)
 
-  const total = scoped.length
-  const statusCounts = countValues(scoped, (j) => j.journeyStatus || 'Unknown')
-  const started = scoped.filter((j) => j.journeyStartedAt).length
-  const engagedPath = scoped.filter(
-    (j) => j.path1Step || j.path1LastSendAt || j.path1ThankyouSentAt,
-  ).length
-  const nonEngagedPath = scoped.filter(
-    (j) => j.path2Step || j.path2LastSendAt || j.day0SentAt,
-  ).length
-  const forms = scoped.filter((j) => j.formSubmitted).length
-  const thankyou = scoped.filter((j) => j.path1ThankyouSentAt).length
-  const ended = scoped.filter((j) => j.journeyEndedAt).length
-  const completed = scoped.filter((j) =>
-    ['Converted', 'Completed'].includes(j.journeyStatus),
-  ).length
-  const durations = scoped
-    .filter((j) => j.journeyStartedAt && j.journeyEndedAt)
-    .map(
-      (j) =>
-        (new Date(j.journeyEndedAt).getTime() - new Date(j.journeyStartedAt).getTime()) / dayMs,
-    )
-    .filter((v) => Number.isFinite(v) && v >= 0)
-  const avgDuration = durations.length
-    ? durations.reduce((a, b) => a + b, 0) / durations.length
-    : null
+  // ── Headline numbers ──
+  const enrolled = sumBy(states, 'n')
+  const inProgress = sumBy(
+    states.filter((s) => s.state === 'in_progress'),
+    'n',
+  )
+  const converted = sumBy(
+    states.filter((s) => s.state === 'converted'),
+    'n',
+  )
+  const completed = sumBy(
+    states.filter((s) => s.state === 'completed'),
+    'n',
+  )
+  const sentAll = sumBy(eng, 'sent')
+  const deliveredAll = sumBy(eng, 'delivered')
 
-  const regionGroups = regions
-    .map((name) => {
-      const rows = scoped.filter((j) => j.region === name)
-      const converted = rows.filter((j) =>
-        ['Converted', 'Completed'].includes(j.journeyStatus),
-      ).length
-      const submitted = rows.filter((j) => j.formSubmitted).length
-      return {
-        label: name,
-        total: rows.length,
-        active: rows.filter((j) => j.journeyStatus === 'Active').length,
-        converted,
-        submitted,
-        conversion: pctNum(converted, rows.length),
-        formRate: pctNum(submitted, rows.length),
+  // ── A/B per region (analyze ROW and CN/JP separately, per brief) ──
+  const regionsToShow = region === 'All' ? ['ROW', 'CNJP'] : [region]
+  const abBlocks = regionsToShow
+    .map((reg) => {
+      const byVar = (v) => {
+        const st = states.filter((s) => s.funnel_region === reg && s.variant === v)
+        const en = eng.filter((e) => e.funnel_region === reg && e.variant === v)
+        const n = sumBy(st, 'n')
+        const conv = sumBy(
+          st.filter((s) => s.state === 'converted'),
+          'n',
+        )
+        const sent = sumBy(en, 'sent')
+        const delivered = sumBy(en, 'delivered')
+        return {
+          variant: v,
+          n,
+          conv,
+          convRate: pctNum(conv, n),
+          sent,
+          delivered,
+          deliveredRate: pctNum(delivered, sent),
+          openRate: pctNum(sumBy(en, 'opened'), delivered),
+          clickRate: pctNum(sumBy(en, 'clicked'), delivered),
+          unsubRate: pctNum(sumBy(en, 'unsubscribed'), delivered),
+          bounceRate: pctNum(sumBy(en, 'bounced'), sent),
+        }
       }
+      const A = byVar('A'),
+        B = byVar('B')
+      return { region: reg, A, B, sig: abSignificance(A.conv, A.n, B.conv, B.n) }
     })
-    .filter((g) => g.total > 0)
-    .sort((a, b) => b.total - a.total)
+    .filter((b) => b.A.n + b.B.n > 0)
 
-  const path1Steps = countValues(
-    scoped.filter((j) => j.path1Step),
-    (j) => j.path1Step,
-  )
-  const path2Steps = countValues(
-    scoped.filter((j) => j.path2Step),
-    (j) => j.path2Step,
-  )
-  const milestones = [
-    ['Tracked records', total, 'All records in scope'],
-    ['Journey started', started, 'Has journeyStartedAt'],
-    ['Engaged path activity', engagedPath, 'Path 1 activity observed'],
-    ['Non-engaged path activity', nonEngagedPath, 'Path 2 activity observed'],
-    ['Form submitted', forms, 'formSubmitted = true'],
-    ['Thank-you sent', thankyou, 'Path 1 thank-you timestamp'],
-    ['Converted / completed', completed, 'Final status is Converted or Completed'],
-  ]
+  // ── Step distributions ──
+  const rollup = (rows) => {
+    const m = new Map()
+    rows.forEach((r) => {
+      const cur = m.get(r.step_id) || { A: 0, B: 0 }
+      cur[r.variant === 'B' ? 'B' : 'A'] += Number(r.n || 0)
+      m.set(r.step_id, cur)
+    })
+    return [...m.entries()]
+      .map(([step, v]) => ({ step, A: v.A, B: v.B, total: v.A + v.B }))
+      .sort((a, b) => stepRank(a.step) - stepRank(b.step))
+  }
+  const convSteps = rollup(convByStep)
+  const curSteps = rollup(curByStep)
+  const convMax = Math.max(1, ...convSteps.map((s) => s.total))
+  const curMax = Math.max(1, ...curSteps.map((s) => s.total))
+
+  // ── Engagement table rows (step × variant) ──
+  const engRows = eng
+    .map((e) => ({
+      ...e,
+      deliveredRate: pctNum(e.delivered, e.sent),
+      openRate: pctNum(e.opened, e.delivered),
+      clickRate: pctNum(e.clicked, e.delivered),
+      unsubRate: pctNum(e.unsubscribed, e.delivered),
+    }))
+    .sort((a, b) => stepRank(a.step_id) - stepRank(b.step_id) || (a.variant > b.variant ? 1 : -1))
 
   return (
     <>
       <div className="analyticsIntelHeader">
         <div>
-          <span className="analyticsIntelEyebrow">JOURNEY ANALYTICS</span>
-          <h2>How are users progressing through the tracked journey?</h2>
+          <span className="analyticsIntelEyebrow">REGFUNNELOPS · A/B ENGAGEMENT</span>
+          <h2>How is the registration funnel performing, A vs B?</h2>
           <p>
-            This view reads the existing JourneyTracking collection. Milestones are reported as
-            observed signals rather than forced into a strict funnel because Path 1 and Path 2 are
-            parallel journey branches.
+            Funnel state comes from FunnelEnrollment; engagement is joined from Events on
+            notification_id via SendLog. A/B results are <strong>sequence-level</strong> (one
+            variant per user for the whole funnel), never attributed to a single email. ROW and
+            CN/JP are analysed separately.
           </p>
         </div>
         <label className="analyticsJourneyRegion no-print">
           <span>Region</span>
           <select value={region} onChange={(e) => setRegion(e.target.value)}>
-            <option value="All">All journey regions</option>
-            {regions.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
+            <option value="All">All regions</option>
+            <option value="ROW">ROW</option>
+            <option value="CNJP">CN / JP</option>
           </select>
         </label>
       </div>
 
       <div className="analyticsMiniStatGrid">
         <MiniStat
-          label="Tracked"
-          value={fmt(total)}
-          detail={`Last ${days} days by journey start`}
+          label="Enrolled"
+          value={fmt(enrolled)}
+          detail={`Last ${days} days by enrollment`}
           tone="blue"
           icon={<UsersIcon />}
         />
         <MiniStat
-          label="Form submissions"
-          value={fmt(forms)}
-          detail={`${pctNum(forms, total).toFixed(1)}% of tracked`}
-          tone="green"
-          icon={<CheckIcon />}
-        />
-        <MiniStat
-          label="Converted / completed"
-          value={fmt(completed)}
-          detail={`${pctNum(completed, total).toFixed(1)}% of tracked`}
-          tone="purple"
-          icon={<TargetIcon />}
-        />
-        <MiniStat
-          label="Avg. journey duration"
-          value={avgDuration == null ? '—' : `${avgDuration.toFixed(1)}d`}
-          detail={`${durations.length} ended journeys with duration`}
+          label="In progress"
+          value={fmt(inProgress)}
+          detail={`${pctNum(inProgress, enrolled).toFixed(1)}% of enrolled`}
           tone="amber"
           icon={<ClockIcon />}
         />
+        <MiniStat
+          label="Converted"
+          value={fmt(converted)}
+          detail={`${pctNum(converted, enrolled).toFixed(1)}% conversion`}
+          tone="green"
+          icon={<TargetIcon />}
+        />
+        <MiniStat
+          label="Completed"
+          value={fmt(completed)}
+          detail={`${fmt(sentAll)} sent · ${pctNum(deliveredAll, sentAll).toFixed(1)}% delivered`}
+          tone="purple"
+          icon={<CheckIcon />}
+        />
       </div>
 
-      <Card
-        title="Journey status"
-        sub="Current status distribution inside the selected journey scope"
-      >
+      <Card title="Funnel state" sub="Where enrolled users are right now, in the selected scope">
         <div className="analyticsJourneyStatusGrid">
-          {['Active', 'Converted', 'Completed', 'Excluded', 'Unknown'].map((status) => {
-            const value = statusCounts.get(status) || 0
-            if (!value && status === 'Unknown') return null
-            return (
-              <div className={`analyticsJourneyStatus status-${status.toLowerCase()}`} key={status}>
-                <span>{status}</span>
-                <strong>{fmt(value)}</strong>
-                <small>{pctNum(value, total).toFixed(1)}%</small>
-              </div>
-            )
-          })}
-        </div>
-      </Card>
-
-      <Card
-        title="Observed journey milestones"
-        sub="Parallel branch signals · percentages are relative to tracked records, not assumed sequential conversion"
-      >
-        <div className="analyticsJourneyMilestones">
-          {milestones.map(([label, value, detail]) => (
-            <div className="analyticsJourneyMilestone" key={label}>
-              <div className="analyticsJourneyMilestoneTop">
-                <div>
-                  <strong>{label}</strong>
-                  <span>{detail}</span>
-                </div>
-                <div>
-                  <b>{fmt(value)}</b>
-                  <small>{pctNum(value, total).toFixed(1)}%</small>
-                </div>
-              </div>
-              <div className="analyticsJourneyTrack">
-                <span style={{ width: `${Math.min(100, pctNum(value, total))}%` }} />
-              </div>
+          {[
+            ['in_progress', 'In progress', 'active', inProgress],
+            ['converted', 'Converted', 'converted', converted],
+            ['completed', 'Completed', 'completed', completed],
+          ].map(([key, label, cls, value]) => (
+            <div className={`analyticsJourneyStatus status-${cls}`} key={key}>
+              <span>{label}</span>
+              <strong>{fmt(value)}</strong>
+              <small>{pctNum(value, enrolled).toFixed(1)}%</small>
             </div>
           ))}
         </div>
       </Card>
 
-      <div className="analyticsTwoCol">
-        <Card title="Engaged path steps" sub="Current Path 1 step values in JourneyTracking">
-          <JourneyStepList counts={path1Steps} total={engagedPath} />
+      {abBlocks.length === 0 ? (
+        <Card title="A/B test" sub="No enrollments in scope yet">
+          <div className="analyticsTableEmpty">Nothing to compare.</div>
         </Card>
-        <Card title="Non-engaged path steps" sub="Current Path 2 step values in JourneyTracking">
-          <JourneyStepList counts={path2Steps} total={nonEngagedPath} />
+      ) : (
+        abBlocks.map((b) => (
+          <Card
+            key={b.region}
+            title={`A/B test · ${regionLabel(b.region)}`}
+            sub={`Primary metric: conversion rate · ${b.sig.label} (z = ${b.sig.z.toFixed(2)}) · sequence-level`}
+          >
+            <div className="analyticsTableWrap">
+              <table className="analyticsDataTable">
+                <thead>
+                  <tr>
+                    <th>Variant</th>
+                    <th>Enrolled</th>
+                    <th>Converted</th>
+                    <th>Conv. rate</th>
+                    <th>Sent</th>
+                    <th>Delivered</th>
+                    <th>Open rate</th>
+                    <th>Click rate</th>
+                    <th>Unsub rate</th>
+                    <th>Bounce rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[b.A, b.B].map((v) => (
+                    <tr key={v.variant}>
+                      <td>
+                        <strong>{v.variant}</strong>
+                      </td>
+                      <td>{fmt(v.n)}</td>
+                      <td>{fmt(v.conv)}</td>
+                      <td>
+                        <strong>{v.convRate.toFixed(2)}%</strong>
+                      </td>
+                      <td>{fmt(v.sent)}</td>
+                      <td>{v.deliveredRate.toFixed(1)}%</td>
+                      <td>{v.openRate.toFixed(1)}%</td>
+                      <td>{v.clickRate.toFixed(1)}%</td>
+                      <td>{v.unsubRate.toFixed(2)}%</td>
+                      <td>{v.bounceRate.toFixed(2)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        ))
+      )}
+
+      <div className="analyticsTwoCol">
+        <Card
+          title="Conversion by step"
+          sub="Last email actually sent before the user converted (convertedAtStep) · A + B"
+        >
+          <div className="analyticsJourneyMilestones">
+            {convSteps.length === 0 && (
+              <div className="analyticsTableEmpty">No conversions in scope.</div>
+            )}
+            {convSteps.map((s) => (
+              <div className="analyticsJourneyMilestone" key={s.step}>
+                <div className="analyticsJourneyMilestoneTop">
+                  <div>
+                    <strong>{stepLabel(s.step)}</strong>
+                    <span>{s.step}</span>
+                  </div>
+                  <div>
+                    <b>{fmt(s.total)}</b>
+                    <small>
+                      A {fmt(s.A)} · B {fmt(s.B)}
+                    </small>
+                  </div>
+                </div>
+                <div className="analyticsJourneyTrack">
+                  <span style={{ width: `${(s.total / convMax) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card
+          title="Where in-progress users are"
+          sub="Current step of users still in the funnel · A + B"
+        >
+          <div className="analyticsJourneyMilestones">
+            {curSteps.length === 0 && (
+              <div className="analyticsTableEmpty">No users in progress.</div>
+            )}
+            {curSteps.map((s) => (
+              <div className="analyticsJourneyMilestone" key={s.step}>
+                <div className="analyticsJourneyMilestoneTop">
+                  <div>
+                    <strong>{stepLabel(s.step)}</strong>
+                    <span>{s.step}</span>
+                  </div>
+                  <div>
+                    <b>{fmt(s.total)}</b>
+                    <small>
+                      A {fmt(s.A)} · B {fmt(s.B)}
+                    </small>
+                  </div>
+                </div>
+                <div className="analyticsJourneyTrack">
+                  <span style={{ width: `${(s.total / curMax) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
         </Card>
       </div>
 
       <Card
-        title="Regional journey performance"
-        sub="Tracked records, form submissions and final Converted/Completed status by journey region"
+        title="Engagement by step and variant"
+        sub="Sent from SendLog · delivered/opened/clicked/unsub from Events, joined on notification_id"
       >
         <div className="analyticsTableWrap">
           <table className="analyticsDataTable">
             <thead>
               <tr>
+                <th>Step</th>
                 <th>Region</th>
-                <th>Tracked</th>
-                <th>Active</th>
-                <th>Forms</th>
-                <th>Form rate</th>
-                <th>Converted / completed</th>
-                <th>Final rate</th>
+                <th>Var.</th>
+                <th>Sent</th>
+                <th>No recipient</th>
+                <th>Errors</th>
+                <th>Delivered</th>
+                <th>Open rate</th>
+                <th>Click rate</th>
+                <th>Unsub rate</th>
+                <th>Bounced</th>
               </tr>
             </thead>
             <tbody>
-              {regionGroups.length === 0 && (
+              {engRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="analyticsTableEmpty">
-                    No journey data in scope
+                  <td colSpan={11} className="analyticsTableEmpty">
+                    No sends in scope yet.
                   </td>
                 </tr>
               )}
-              {regionGroups.map((g) => (
-                <tr key={g.label}>
+              {engRows.map((e) => (
+                <tr key={`${e.funnel_region}-${e.variant}-${e.step_id}`}>
+                  <td>{stepLabel(e.step_id)}</td>
+                  <td>{regionLabel(e.funnel_region)}</td>
                   <td>
-                    <strong>{g.label}</strong>
+                    <strong>{e.variant}</strong>
                   </td>
-                  <td>{fmt(g.total)}</td>
-                  <td>{fmt(g.active)}</td>
-                  <td>{fmt(g.submitted)}</td>
-                  <td>{g.formRate.toFixed(1)}%</td>
-                  <td>{fmt(g.converted)}</td>
+                  <td>{fmt(e.sent)}</td>
+                  <td>{fmt(e.no_recipient)}</td>
+                  <td>{fmt(e.errors)}</td>
                   <td>
-                    <strong style={{ color: rateColor(g.conversion) }}>
-                      {g.conversion.toFixed(1)}%
-                    </strong>
+                    {fmt(e.delivered)} <small>({e.deliveredRate.toFixed(1)}%)</small>
                   </td>
+                  <td>{e.openRate.toFixed(1)}%</td>
+                  <td>{e.clickRate.toFixed(1)}%</td>
+                  <td>{e.unsubRate.toFixed(2)}%</td>
+                  <td>{fmt(e.bounced)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </Card>
-
-      <div className="analyticsMethodNote">
-        <AlertIcon />
-        <span>
-          Journey status and milestone fields come directly from JourneyTracking. This dashboard
-          does not infer missing steps or assume that a form submission is required for every
-          completion.
-        </span>
-      </div>
     </>
-  )
-}
-
-function JourneyStepList({ counts, total }) {
-  const rows = [...counts.entries()].sort((a, b) => b[1] - a[1])
-  if (!rows.length) return <Empty>No step values recorded.</Empty>
-  return (
-    <div className="analyticsJourneyStepList">
-      {rows.map(([label, value]) => (
-        <div key={label}>
-          <div>
-            <strong>{label}</strong>
-            <span>
-              {fmt(value)} · {pctNum(value, total).toFixed(1)}%
-            </span>
-          </div>
-          <div className="analyticsJourneyTrack">
-            <span style={{ width: `${Math.min(100, pctNum(value, total))}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
   )
 }
 
@@ -4344,8 +4459,8 @@ function DataQuality({ current, tplMap, campaigns }) {
                 <p>{issue.text}</p>
                 {issue.samples?.length > 0 && (
                   <div className="analyticsIssueSamples">
-                    {issue.samples.slice(0, 5).map((sample) => (
-                      <code key={sample}>{sample}</code>
+                    {issue.samples.slice(0, 5).map((sample, i) => (
+                      <code key={`${i}-${sample}`}>{sample}</code>
                     ))}
                   </div>
                 )}

@@ -18,6 +18,10 @@ import Campaigns from './collections/Campaigns'
 import AnalyticsSavedViews from './collections/AnalyticsSavedViews'
 import AnalyticsAuditLogs from './collections/AnalyticsAuditLogs'
 
+import FunnelEnrollment from './collections/FunnelEnrollment'
+import SendLog from './collections/SendLog'
+import FunnelConfig from './globals/FunnelConfig'
+
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
@@ -42,7 +46,11 @@ export default buildConfig({
     Campaigns,
     AnalyticsSavedViews,
     AnalyticsAuditLogs,
+    FunnelEnrollment,
+    SendLog,
   ],
+  globals: [FunnelConfig],
+
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
