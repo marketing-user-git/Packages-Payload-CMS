@@ -515,7 +515,7 @@ export interface FunnelEnrollment {
    * Sequence-level A/B, assigned once at enrollment. Stable for the whole funnel.
    */
   variant: 'A' | 'B';
-  state: 'in_progress' | 'converted' | 'completed';
+  state: 'in_progress' | 'converted' | 'completed' | 'excluded';
   currentStep?: string | null;
   lastSentStep?: string | null;
   /**

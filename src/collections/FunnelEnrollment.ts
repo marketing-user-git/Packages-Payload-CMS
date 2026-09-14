@@ -20,7 +20,7 @@ export const FunnelEnrollment: CollectionConfig = {
   admin: {
     group: 'RegFunnelOps',
     useAsTitle: 'externalId',
-    defaultColumns: ['externalId', 'funnelRegion', 'variant', 'state', 'currentStep', 'nextSendAt'],
+    defaultColumns: ['externalId','country', 'osApp', 'funnelRegion', 'variant', 'state', 'currentStep', 'nextSendAt'],
   },
   access: { read: isInternal, create: isInternal, update: isInternal, delete: isInternal },
   hooks: {
@@ -30,11 +30,18 @@ export const FunnelEnrollment: CollectionConfig = {
       // (CRM conversion webhook OR the sender's pre-send STATUS guard).
       ({ data, originalDoc }) => {
         const wasConverted = originalDoc?.state === 'converted'
+
         if (data?.state === 'converted' && !wasConverted) {
-          data.convertedAtStep =
-            data.convertedAtStep ?? originalDoc?.lastSentStep ?? '00_no_email_yet'
-          data.convertedAt = data.convertedAt ?? new Date().toISOString()
+          const incomingStep =
+            typeof data.convertedAtStep === 'string'
+              ? data.convertedAtStep.trim()
+              : data.convertedAtStep
+
+          data.convertedAtStep = incomingStep || originalDoc?.lastSentStep || '00_no_email_yet'
+
+          data.convertedAt = data.convertedAt || new Date().toISOString()
         }
+
         return data
       },
     ],
@@ -114,6 +121,7 @@ export const FunnelEnrollment: CollectionConfig = {
         { label: 'In progress', value: 'in_progress' },
         { label: 'Converted', value: 'converted' },
         { label: 'Completed', value: 'completed' },
+        { label: 'Excluded', value: 'excluded' },
       ],
     },
 
