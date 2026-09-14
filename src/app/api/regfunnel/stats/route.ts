@@ -76,6 +76,10 @@ export async function GET(req: NextRequest) {
   //    notification_id is the bridge between SendLog and Events.
   //    os_app remains a reporting dimension so China and Global health can be
   //    inspected independently inside CNJP (Japan=global, China=china).
+  //
+  //    NOTE: send_log.os_app and funnel_enrollment.os_app are separate Postgres
+  //    enum types. Cast them to text before COALESCE or Postgres will throw a
+  //    runtime type error even though both enums contain "global"/"china".
   const engagement = rowsOf(await db.execute(sql`
     WITH cohort AS (
       SELECT external_id, funnel_region, os_app
@@ -85,7 +89,7 @@ export async function GET(req: NextRequest) {
     s AS (
       SELECT sl.step_id,
              sl.variant,
-             COALESCE(sl.os_app, c.os_app) AS os_app,
+             COALESCE(sl.os_app::text, c.os_app::text) AS os_app,
              sl.notification_id,
              sl.result,
              c.funnel_region
