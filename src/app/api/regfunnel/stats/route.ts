@@ -15,6 +15,13 @@ const isInternal = (user: any) =>
 
 const rowsOf = (res: any) => (Array.isArray(res) ? res : res?.rows ?? [])
 
+const sequenceOf = (value: unknown) =>
+  Array.isArray(value)
+    ? value
+        .map((item: any) => String(item?.stepId || '').trim())
+        .filter(Boolean)
+    : []
+
 export async function GET(req: NextRequest) {
   const payload = await getPayload({ config: configPromise })
 
@@ -28,50 +35,65 @@ export async function GET(req: NextRequest) {
   const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 3650) : 90
 
   const db: any = payload.db.drizzle
+  const funnelConfig: any = await payload.findGlobal({ slug: 'funnel-config' })
 
-  // 1) Funnel state distribution (per region × variant × state)
+  // The selected date range is an ENROLLMENT COHORT. Every funnel metric below
+  // uses that same cohort so A/B conversion and engagement share one denominator.
+  // Send/event activity is therefore attributed to users enrolled in the period,
+  // rather than independently filtering sends by attempted_at.
+
+  // 1) Funnel state distribution (per region × app × variant × state)
   const states = rowsOf(await db.execute(sql`
-    SELECT funnel_region, variant, state, COUNT(*)::int AS n
+    SELECT funnel_region, os_app, variant, state, COUNT(*)::int AS n
     FROM funnel_enrollment
     WHERE enrolled_at >= NOW() - make_interval(days => ${days})
-    GROUP BY funnel_region, variant, state
+    GROUP BY funnel_region, os_app, variant, state
   `))
 
   // 2) Where converted users exited (converted_at_step)
   const convertedByStep = rowsOf(await db.execute(sql`
-    SELECT funnel_region, variant,
+    SELECT funnel_region, os_app, variant,
            COALESCE(converted_at_step, '00_no_email_yet') AS step_id,
            COUNT(*)::int AS n
     FROM funnel_enrollment
     WHERE state = 'converted'
       AND enrolled_at >= NOW() - make_interval(days => ${days})
-    GROUP BY funnel_region, variant, step_id
+    GROUP BY funnel_region, os_app, variant, step_id
   `))
 
   // 3) Where in-progress users currently are (current_step)
   const currentByStep = rowsOf(await db.execute(sql`
-    SELECT funnel_region, variant,
+    SELECT funnel_region, os_app, variant,
            COALESCE(current_step, '00_no_email_yet') AS step_id,
            COUNT(*)::int AS n
     FROM funnel_enrollment
     WHERE state = 'in_progress'
       AND enrolled_at >= NOW() - make_interval(days => ${days})
-    GROUP BY funnel_region, variant, step_id
+    GROUP BY funnel_region, os_app, variant, step_id
   `))
 
-  // 4) Engagement per region × variant × step — THE bridge on notification_id.
-  //    Region comes from FunnelEnrollment (send_log has no region).
-  //    DISTINCT notification_id per event type = one count per send.
+  // 4) Engagement for the SAME enrollment cohort.
+  //    notification_id is the bridge between SendLog and Events.
+  //    os_app remains a reporting dimension so China and Global health can be
+  //    inspected independently inside CNJP (Japan=global, China=china).
   const engagement = rowsOf(await db.execute(sql`
-    WITH s AS (
-      SELECT sl.step_id, sl.variant, sl.os_app, sl.notification_id, sl.result,
-             fe.funnel_region
+    WITH cohort AS (
+      SELECT external_id, funnel_region, os_app
+      FROM funnel_enrollment
+      WHERE enrolled_at >= NOW() - make_interval(days => ${days})
+    ),
+    s AS (
+      SELECT sl.step_id,
+             sl.variant,
+             COALESCE(sl.os_app, c.os_app) AS os_app,
+             sl.notification_id,
+             sl.result,
+             c.funnel_region
       FROM send_log sl
-      LEFT JOIN funnel_enrollment fe ON fe.external_id = sl.external_id
-      WHERE sl.attempted_at >= NOW() - make_interval(days => ${days})
+      INNER JOIN cohort c ON c.external_id = sl.external_id
     )
     SELECT
-      s.funnel_region, s.variant, s.step_id,
+      s.funnel_region, s.os_app, s.variant, s.step_id,
       COUNT(*) FILTER (WHERE s.result = 'sent')::int                       AS sent,
       COUNT(*) FILTER (WHERE s.result = 'skipped_no_recipient')::int       AS no_recipient,
       COUNT(*) FILTER (WHERE s.result = 'error')::int                      AS errors,
@@ -83,13 +105,18 @@ export async function GET(req: NextRequest) {
       COUNT(DISTINCT e.notification_id) FILTER (WHERE e.event_type = 'complained')::int   AS complained
     FROM s
     LEFT JOIN events e ON e.notification_id = s.notification_id
-    GROUP BY s.funnel_region, s.variant, s.step_id
-    ORDER BY s.funnel_region, s.variant, s.step_id
+    GROUP BY s.funnel_region, s.os_app, s.variant, s.step_id
+    ORDER BY s.funnel_region, s.os_app, s.variant, s.step_id
   `))
 
   return NextResponse.json({
     days,
     generatedAt: new Date().toISOString(),
+    cohortBasis: 'enrolledAt',
+    sequences: {
+      ROW: sequenceOf(funnelConfig?.sequenceRow),
+      CNJP: sequenceOf(funnelConfig?.sequenceCnjp),
+    },
     states,
     convertedByStep,
     currentByStep,
