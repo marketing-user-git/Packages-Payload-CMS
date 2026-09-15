@@ -386,30 +386,8 @@ export default function RegFunnelDashboard({
         avgHours,
       }
     })
-  const aRow = abRows.find((row) => row.variant === 'A')
-  const bRow = abRows.find((row) => row.variant === 'B')
   const metricValue = (row) =>
     abMetric === 'completion' ? row.completionRate : abMetric === 'time' ? row.avgHours : row.conversionRate
-  const aMetric = aRow ? metricValue(aRow) : null
-  const bMetric = bRow ? metricValue(bRow) : null
-
-  const aPopulations = new Set(
-    filteredAbStats
-      .filter((row) => row.variant === 'A' && Number(row.enrolled || 0) > 0)
-      .map((row) => `${row.funnel_region}:${row.os_app}`),
-  )
-  const bPopulations = new Set(
-    filteredAbStats
-      .filter((row) => row.variant === 'B' && Number(row.enrolled || 0) > 0)
-      .map((row) => `${row.funnel_region}:${row.os_app}`),
-  )
-  const abComparable = [...aPopulations].some((population) => bPopulations.has(population))
-  const lift =
-    abComparable && aMetric && bMetric != null
-      ? abMetric === 'time'
-        ? ((aMetric - bMetric) / aMetric) * 100
-        : ((bMetric - aMetric) / aMetric) * 100
-      : null
 
   const countryRows = useMemo(() => {
     const map = new Map()
@@ -533,11 +511,6 @@ export default function RegFunnelDashboard({
           <NavItem href="#send-health" icon="mail" label="Sends & Errors" sub="Delivery and issues" />
           <NavItem href="/?app=analytics" icon="report" label="Reports" sub="Open Marketing Analytics" />
         </nav>
-
-        <div className={styles.sidebarQuote}>
-          <strong>Smarter Journeys.<br />Higher Impact.</strong>
-          <span>Automate. Learn. Convert.</span>
-        </div>
       </aside>
 
       <main className={styles.main} id="overview">
@@ -705,25 +678,14 @@ export default function RegFunnelDashboard({
                   <div className={styles.abRow} key={row.variant}>
                     <div className={`${styles.variantBadge} ${row.variant === 'B' ? styles.variantB : ''}`}>{row.variant}</div>
                     <div className={styles.abBody}>
-                      <div><strong>Variant {row.variant}</strong><span>{row.variant === 'A' ? 'Current (Control)' : 'Challenger'}</span></div>
+                      <div><strong>Variant {row.variant}</strong><span>{fmt(row.enrolled)} enrolled</span></div>
                       {abMetric !== 'time' && <div className={styles.progress}><i style={{ width: `${width}%` }} /></div>}
                       <small>{abMetric === 'time' ? `${fmt(row.converted)} converted` : `${fmt(abMetric === 'completion' ? row.completed : row.converted)} / ${fmt(row.enrolled)}`}</small>
                     </div>
                     <strong>{abMetric === 'time' ? hoursLabel(value) : `${Number(value || 0).toFixed(1)}%`}</strong>
-                    {row.variant === 'B' && lift != null && <em className={lift >= 0 ? styles.liftGood : styles.liftBad}>{lift >= 0 ? '+' : ''}{lift.toFixed(1)}%</em>}
                   </div>
                 )
               })}
-            </div>
-
-            <div className={`${styles.abFoot} ${!abComparable && aRow?.enrolled && bRow?.enrolled ? styles.abWarning : ''}`}>
-              {!abComparable && aRow?.enrolled && bRow?.enrolled
-                ? 'Variants currently come from different app / region populations. Do not infer a winner from this aggregate view.'
-                : abRows.reduce((total, row) => total + row.enrolled, 0) < 30
-                  ? 'Sample is still too small for a reliable winner.'
-                  : lift == null
-                    ? 'Both variants need measurable results before lift can be calculated.'
-                    : `Variant B ${lift >= 0 ? 'is ahead' : 'is behind'} by ${Math.abs(lift).toFixed(1)}% on this metric.`}
             </div>
           </Panel>
         </section>
