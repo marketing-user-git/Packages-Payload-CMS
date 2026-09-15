@@ -1,6 +1,6 @@
 // src/app/api/regfunnel/stats/route.ts
 // RegFunnelOps — aggregated funnel + A/B engagement stats for the operational dashboard.
-// Heavy joins stay in Postgres so the browser receives only dashboard-ready data.
+// Heavy joins stay in Postgres so the browser receives dashboard-ready data only.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
@@ -35,13 +35,35 @@ export async function GET(req: NextRequest) {
   const db: any = payload.db.drizzle
   const funnelConfig: any = await payload.findGlobal({ slug: 'funnel-config' })
 
-  // The selected period is an ENROLLMENT COHORT. State, A/B and engagement
-  // therefore use the same user population and the same denominator.
   const states = rowsOf(await db.execute(sql`
     SELECT funnel_region, os_app, variant, state, COUNT(*)::int AS n
     FROM funnel_enrollment
     WHERE enrolled_at >= NOW() - make_interval(days => ${days})
     GROUP BY funnel_region, os_app, variant, state
+  `))
+
+  const previousStates = rowsOf(await db.execute(sql`
+    SELECT funnel_region, os_app, variant, state, COUNT(*)::int AS n
+    FROM funnel_enrollment
+    WHERE enrolled_at < NOW() - make_interval(days => ${days})
+      AND enrolled_at >= NOW() - make_interval(days => ${days * 2})
+    GROUP BY funnel_region, os_app, variant, state
+  `))
+
+  const abStats = rowsOf(await db.execute(sql`
+    SELECT
+      funnel_region,
+      os_app,
+      variant,
+      COUNT(*)::int AS enrolled,
+      COUNT(*) FILTER (WHERE state = 'converted')::int AS converted,
+      COUNT(*) FILTER (WHERE state = 'completed')::int AS completed,
+      COUNT(*) FILTER (WHERE state = 'excluded')::int AS excluded,
+      AVG(EXTRACT(EPOCH FROM (converted_at - enrolled_at)) / 3600.0)
+        FILTER (WHERE state = 'converted' AND converted_at IS NOT NULL)::float AS avg_hours_to_convert
+    FROM funnel_enrollment
+    WHERE enrolled_at >= NOW() - make_interval(days => ${days})
+    GROUP BY funnel_region, os_app, variant
   `))
 
   const convertedByStep = rowsOf(await db.execute(sql`
@@ -64,12 +86,31 @@ export async function GET(req: NextRequest) {
     GROUP BY funnel_region, os_app, variant, step_id
   `))
 
-  // Cohort trend: users grouped by the day they enrolled. Converted/completed
-  // are CURRENT outcomes for those daily cohorts, not event-date counts.
+  const funnelStages = rowsOf(await db.execute(sql`
+    SELECT
+      funnel_region,
+      os_app,
+      variant,
+      COUNT(*)::int AS enrolled,
+      COUNT(*) FILTER (WHERE send_index >= 1)::int AS started,
+      COUNT(*) FILTER (
+        WHERE send_index >= CASE WHEN funnel_region = 'ROW' THEN 5 ELSE 3 END
+      )::int AS mid_journey,
+      COUNT(*) FILTER (
+        WHERE send_index >= CASE WHEN funnel_region = 'ROW' THEN 10 ELSE 7 END
+      )::int AS late_journey,
+      COUNT(*) FILTER (WHERE state = 'converted')::int AS converted,
+      COUNT(*) FILTER (WHERE state = 'completed')::int AS completed
+    FROM funnel_enrollment
+    WHERE enrolled_at >= NOW() - make_interval(days => ${days})
+    GROUP BY funnel_region, os_app, variant
+  `))
+
   const trend = rowsOf(await db.execute(sql`
     SELECT
       TO_CHAR(DATE_TRUNC('day', enrolled_at), 'YYYY-MM-DD') AS day,
       COUNT(*)::int AS enrolled,
+      COUNT(*) FILTER (WHERE state = 'in_progress')::int AS in_progress,
       COUNT(*) FILTER (WHERE state = 'converted')::int AS converted,
       COUNT(*) FILTER (WHERE state = 'completed')::int AS completed,
       COUNT(*) FILTER (WHERE state = 'excluded')::int AS excluded
@@ -79,10 +120,22 @@ export async function GET(req: NextRequest) {
     ORDER BY DATE_TRUNC('day', enrolled_at)
   `))
 
-  // Recent rows are intentionally small and dashboard-ready. Full searchable
-  // enrollment management will get its own paginated endpoint/view later.
+  const countryPerformance = rowsOf(await db.execute(sql`
+    SELECT
+      COALESCE(NULLIF(country, ''), 'Unknown') AS country,
+      funnel_region,
+      os_app,
+      variant,
+      state,
+      COUNT(*)::int AS n
+    FROM funnel_enrollment
+    WHERE enrolled_at >= NOW() - make_interval(days => ${days})
+    GROUP BY country, funnel_region, os_app, variant, state
+  `))
+
   const recentEnrollments = rowsOf(await db.execute(sql`
     SELECT
+      id,
       external_id,
       country,
       culture,
@@ -91,20 +144,20 @@ export async function GET(req: NextRequest) {
       variant,
       state,
       current_step,
+      last_sent_step,
       send_index,
       next_send_at,
       enrolled_at,
+      converted_at,
+      completed_at,
       paused,
       excluded
     FROM funnel_enrollment
     WHERE enrolled_at >= NOW() - make_interval(days => ${days})
     ORDER BY enrolled_at DESC
-    LIMIT 12
+    LIMIT 50
   `))
 
-  // notification_id bridges SendLog and Events. os_app is preserved as a
-  // reporting dimension so China and Global channel health stay separable.
-  // The two os_app columns are distinct Postgres enum types, hence ::text.
   const engagement = rowsOf(await db.execute(sql`
     WITH cohort AS (
       SELECT external_id, funnel_region, os_app
@@ -147,9 +200,13 @@ export async function GET(req: NextRequest) {
       CNJP: sequenceOf(funnelConfig?.sequenceCnjp),
     },
     states,
+    previousStates,
+    abStats,
     convertedByStep,
     currentByStep,
+    funnelStages,
     trend,
+    countryPerformance,
     recentEnrollments,
     engagement,
   })
