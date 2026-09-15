@@ -31,7 +31,6 @@ During local testing, use the current public tunnel domain with the same path. `
 
 Enable the email events needed by RegFunnelOps:
 
-- Email Sent
 - Email Received
 - Email Opened
 - Email Link Clicked
@@ -41,7 +40,7 @@ Enable the email events needed by RegFunnelOps:
 - Email Failed
 - Email Suppressed
 
-`Email Received` is the dashboard's delivered event.
+`Email Received` is the dashboard's delivered event. OneSignal no longer allows `Email Sent` to be added to new Event Streams, so RegFunnelOps continues to use its own `SendLog` as the source of truth for sends.
 
 ## JSON body
 
@@ -49,7 +48,7 @@ Enable the email events needed by RegFunnelOps:
 {
   "event.kind": "{{ event.kind }}",
   "event.id": "{{ event.id }}",
-  "event.timestamp": "{{ event.timestamp }}",
+  "event.timestamp": {{ event.timestamp }},
   "event.datetime": "{{ event.datetime }}",
   "event.app_id": "{{ event.app_id }}",
   "event.subscription_id": "{{ event.subscription_id }}",
