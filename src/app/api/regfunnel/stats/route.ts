@@ -59,8 +59,8 @@ export async function GET(req: NextRequest) {
       COUNT(*) FILTER (WHERE state = 'converted')::int AS converted,
       COUNT(*) FILTER (WHERE state = 'completed')::int AS completed,
       COUNT(*) FILTER (WHERE state = 'excluded')::int AS excluded,
-      AVG(EXTRACT(EPOCH FROM (converted_at - enrolled_at)) / 3600.0)
-        FILTER (WHERE state = 'converted' AND converted_at IS NOT NULL)::float AS avg_hours_to_convert
+      (AVG(EXTRACT(EPOCH FROM (converted_at - enrolled_at)) / 3600.0)
+        FILTER (WHERE state = 'converted' AND converted_at IS NOT NULL))::float AS avg_hours_to_convert
     FROM funnel_enrollment
     WHERE enrolled_at >= NOW() - make_interval(days => ${days})
     GROUP BY funnel_region, os_app, variant
