@@ -1,22 +1,68 @@
 import configPromise from '@payload-config'
 import { getPayload } from 'payload'
-import { ingestEvent, APPS } from '@/lib/analytics/webhookUtils'
+import { ingestEvent, APPS, resolveTemplate } from '@/lib/analytics/webhookUtils'
+
+const first = (...values: any[]) =>
+  values.find((value) => value !== undefined && value !== null && String(value).trim() !== '')
+
+const eventMap: Record<string, string> = {
+  // Current OneSignal Event Streams email events
+  'message.email.received': 'delivered',
+  'message.email.opened': 'opened',
+  'message.email.clicked': 'clicked',
+  'message.email.unsubscribed': 'unsubscribed',
+  'message.email.reported_as_spam': 'complained',
+  'message.email.bounced': 'bounced_hard',
+  'message.email.failed': 'failed',
+  'message.email.suppressed': 'failed',
+
+  // Push Event Streams / legacy webhook compatibility
+  'message.push.sent': 'accepted',
+  'message.push.received': 'delivered',
+  'message.push.clicked': 'clicked',
+  'message.push.failed': 'failed',
+  sent: 'accepted',
+  'notification.sent': 'accepted',
+  delivered: 'delivered',
+  displayed: 'delivered',
+  'notification.delivered': 'delivered',
+  clicked: 'clicked',
+  'notification.clicked': 'clicked',
+  failed: 'failed',
+  'notification.failed': 'failed',
+}
+
+const toTimestamp = (datetime: unknown, unix: unknown) => {
+  if (datetime) {
+    const parsed = new Date(String(datetime))
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString()
+  }
+
+  const numeric = Number(unix)
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return new Date(numeric > 1_000_000_000_000 ? numeric : numeric * 1000).toISOString()
+  }
+
+  return new Date().toISOString()
+}
 
 /**
- * OneSignal push webhook (Event Streams / webhook).
+ * OneSignal Event Streams receiver for RegFunnelOps delivery + engagement.
  *
- * NOTE: we don't yet have a real OneSignal webhook payload sample, so this route
- * is defensive: it logs the raw body (so you can capture the real shape), then
- * makes a best-effort mapping. Once you send a real event and we see the payload,
- * we finalize the field mapping — exactly like we did with Mailgun.
+ * Accepts both the documented flattened custom-body keys ("event.kind",
+ * "message.id", etc.) and nested JSON so the stream can evolve without
+ * breaking ingestion.
  *
- * Security: OneSignal webhooks aren't HMAC-signed by default, so we require a
- * shared secret in the URL: /api/webhooks/onesignal?token=YOUR_SECRET
+ * Authentication: prefer `Authorization: Bearer <WEBHOOK_SHARED_SECRET>`.
+ * `?token=` and `X-API-Key` remain supported for backwards compatibility.
  */
 export const POST = async (req: Request) => {
   const url = new URL(req.url)
-  const token = url.searchParams.get('token')
-  if (!process.env.WEBHOOK_SHARED_SECRET || token !== process.env.WEBHOOK_SHARED_SECRET) {
+  const auth = req.headers.get('authorization') || ''
+  const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : ''
+  const providedSecret = first(url.searchParams.get('token'), bearer, req.headers.get('x-api-key'))
+
+  if (!process.env.WEBHOOK_SHARED_SECRET || providedSecret !== process.env.WEBHOOK_SHARED_SECRET) {
     return Response.json({ error: 'unauthorized' }, { status: 401 })
   }
 
@@ -27,56 +73,139 @@ export const POST = async (req: Request) => {
     return Response.json({ error: 'invalid json' }, { status: 400 })
   }
 
-  // 🔍 Capture the real shape — check your server logs after the first real event.
-  console.log('[onesignal webhook] raw payload:', JSON.stringify(body).slice(0, 2000))
-
-  // Best-effort extraction (adjust once we see a real payload)
-  const appId: string | undefined = body?.app_id || body?.appId
-  const notificationId: string | undefined = body?.notification_id || body?.id
-  const rawEvent: string | undefined = body?.event || body?.kind || body?.type
-
-  // Map OneSignal push events → our eventType (tentative)
-  const map: Record<string, string> = {
-    sent: 'accepted',
-    'notification.sent': 'accepted',
-    delivered: 'delivered',
-    'notification.delivered': 'delivered',
-    displayed: 'delivered',
-    clicked: 'clicked',
-    'notification.clicked': 'clicked',
-    failed: 'failed',
-    'notification.failed': 'failed',
-  }
-  const eventType = rawEvent ? map[rawEvent] : undefined
+  const eventKind: string | undefined = first(
+    body?.['event.kind'],
+    body?.event?.kind,
+    body?.event,
+    body?.kind,
+    body?.type,
+  )
+  const eventType = eventKind ? eventMap[eventKind] : undefined
 
   if (!eventType) {
-    // Unknown/unmapped — acknowledge so OneSignal doesn't retry, but record nothing.
-    return Response.json({ ok: true, captured: true, unmappedEvent: rawEvent }, { status: 200 })
+    return Response.json({ ok: true, ignored: true, unmappedEvent: eventKind }, { status: 200 })
   }
+
+  const appId: string | undefined = first(
+    body?.['event.app_id'],
+    body?.event?.app_id,
+    body?.['user.subscription.app_id'],
+    body?.user?.subscription?.app_id,
+    body?.app_id,
+    body?.appId,
+  )
+  const notificationId: string | undefined = first(
+    body?.['message.id'],
+    body?.message?.id,
+    body?.notification_id,
+    body?.notificationId,
+  )
+  const eventId: string | undefined = first(body?.['event.id'], body?.event?.id)
+  const subscriptionId: string | undefined = first(
+    body?.['event.subscription_id'],
+    body?.event?.subscription_id,
+    body?.['user.subscription.id'],
+    body?.user?.subscription?.id,
+    body?.subscription_id,
+  )
+  const externalId: string | undefined = first(
+    body?.['event.external_id'],
+    body?.event?.external_id,
+    body?.external_id,
+  )
+  const recipient: string | undefined = first(
+    body?.['user.subscription.subscription_token'],
+    body?.user?.subscription?.subscription_token,
+    body?.recipient,
+    body?.email,
+    body?.player_id,
+  )
+  const streamTemplateId: string | undefined = first(
+    body?.['message.template_id'],
+    body?.message?.template_id,
+  )
+  const streamTemplateName: string | undefined = first(
+    body?.['message.template_name'],
+    body?.message?.template_name,
+  )
+  const failureReason: string | undefined = first(
+    body?.['event.data.failure_reason'],
+    body?.event?.data?.failure_reason,
+  )
+  const timestamp = toTimestamp(
+    first(body?.['event.datetime'], body?.event?.datetime),
+    first(body?.['event.timestamp'], body?.event?.timestamp, body?.timestamp),
+  )
 
   const appCfg = appId ? APPS[appId] : undefined
   const source = appCfg?.source || 'onesignal_global'
-
+  const channel = eventKind?.startsWith('message.email.') ? 'email' : 'push'
   const payload = await getPayload({ config: configPromise })
+
   try {
+    let region: string | undefined = first(body?.region, body?.['region'])
+    if (!region && externalId) {
+      const enrollment = await payload.find({
+        collection: 'funnel-enrollment',
+        where: { externalId: { equals: externalId } },
+        limit: 1,
+        overrideAccess: true,
+      })
+      region = enrollment.docs[0]?.funnelRegion || undefined
+    }
+
+    const resolved = await resolveTemplate(payload, notificationId, appId)
+    let templateKey = resolved.templateKey
+    let templateName = streamTemplateName || resolved.templateName
+    const templateId = streamTemplateId || resolved.templateId
+
+    // Event Streams already gives us the template ID. Use it directly if the
+    // notification cache did not yet resolve a canonical template key.
+    if (!templateKey && templateId && appCfg) {
+      const mapping = await payload.find({
+        collection: 'template-mappings',
+        where: { [appCfg.tplField]: { equals: templateId } },
+        limit: 1,
+        overrideAccess: true,
+      })
+      if (mapping.docs.length) {
+        templateKey = mapping.docs[0].templateKey || null
+        templateName = templateName || mapping.docs[0].templateName || null
+      }
+    }
+
+    const recipientKey = subscriptionId || recipient || externalId || eventId || ''
+    const messageId = notificationId
+      ? `${notificationId}:${recipientKey}`
+      : eventId || undefined
+
     const res = await ingestEvent(payload, {
-      channel: 'push',
+      channel,
       source,
       eventType,
-      recipient: body?.player_id || body?.subscription_id,
-      messageId: notificationId ? `${notificationId}:${body?.player_id || ''}` : undefined,
+      recipient,
+      messageId,
       notificationId,
-      // push template resolution can reuse resolveTemplate later if needed
-      templateKey: null,
-      region: body?.region,
-      timestamp: new Date((body?.timestamp ? Number(body.timestamp) * 1000 : Date.now())).toISOString(),
-      metadata: { raw: body },
+      templateKey,
+      templateName,
+      templateId,
+      region,
+      timestamp,
+      metadata: {
+        eventKind,
+        eventId,
+        externalId,
+        subscriptionId,
+        failureReason,
+      },
     })
-    return Response.json({ ok: true, ...res }, { status: 200 })
-  } catch (e: any) {
-    console.error('onesignal ingest error:', e?.message || e)
+
+    return Response.json({ ok: true, eventKind, channel, ...res }, { status: 200 })
+  } catch (error: any) {
+    console.error('onesignal ingest error:', error?.message || error)
     return Response.json({ error: 'ingest failed' }, { status: 500 })
   }
 }
 
-export const GET = async () => Response.json({ ok: true, route: 'onesignal webhook' })
+export const GET = async () =>
+  Response.json({ ok: true, route: 'onesignal event streams webhook' })
