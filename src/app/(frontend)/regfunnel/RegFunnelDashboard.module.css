@@ -40,7 +40,7 @@
   --page: #f5f7f8;
   --page-2: #eef2f4;
   --sidebar: #f8fbfc;
-  --sidebar-2: #eef5f7;
+  --sidebar-2: #f1f5f6;
   --surface: #ffffff;
   --surface-2: #fbfcfd;
   --surface-3: #edf3f5;
@@ -95,7 +95,7 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  overflow: hidden auto;
+  overflow: hidden;
   z-index: 20;
   border-right: 1px solid color-mix(in srgb, var(--cyan) 18%, transparent);
   background:
@@ -124,11 +124,11 @@
 
 .shell[data-theme="light"] .sidebar {
   background:
-    radial-gradient(circle at 16% 7%, rgba(43, 184, 199, 0.11), transparent 27%),
-    radial-gradient(circle at 112% 64%, rgba(46, 154, 126, 0.08), transparent 34%),
-    linear-gradient(180deg, #f9fcfd 0%, #edf5f7 100%);
-  border-right-color: rgba(0, 108, 124, 0.16);
-  box-shadow: 10px 0 28px rgba(31, 61, 73, .045);
+    radial-gradient(circle at 16% 7%, rgba(43, 184, 199, 0.075), transparent 27%),
+    radial-gradient(circle at 112% 64%, rgba(46, 154, 126, 0.045), transparent 34%),
+    linear-gradient(180deg, #fafcfd 0%, #f1f5f6 100%);
+  border-right-color: rgba(0, 108, 124, 0.14);
+  box-shadow: 10px 0 28px rgba(31, 61, 73, .04);
 }
 
 .sidebarGlow {
@@ -141,15 +141,15 @@
 }
 
 .shell[data-theme="light"] .sidebarGlow {
-  border-color: rgba(0, 112, 126, .09);
-  background: linear-gradient(180deg, rgba(255,255,255,.72), transparent 42%);
+  border-color: rgba(0, 112, 126, .08);
+  background: linear-gradient(180deg, rgba(255,255,255,.78), transparent 42%);
 }
 
 .sidebarGlow::before {
   content: "Powered by";
   position: absolute;
   left: 18px;
-  bottom: 70px;
+  bottom: 92px;
   color: var(--subtle);
   font-size: 9.5px;
   line-height: 1;
@@ -160,7 +160,7 @@
   content: "";
   position: absolute;
   left: 18px;
-  bottom: 20px;
+  bottom: 40px;
   width: 172px;
   height: 42px;
   background: url('/brand/easymarkets-dark.svg') left center / contain no-repeat;
@@ -225,7 +225,7 @@
   display: flex;
   flex-direction: column;
   gap: 7px;
-  padding: 0 2px 112px;
+  padding: 0 2px 124px;
 }
 
 .nav a {
@@ -884,6 +884,15 @@
 }
 
 .shell :is(button, a, select, input):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+@media (max-height: 700px) and (min-width: 1051px) {
+  .sidebar { overflow-y: auto; }
+  .nav { gap: 4px; padding-bottom: 96px; }
+  .nav a { min-height: 48px; padding-top: 7px; padding-bottom: 7px; }
+  .brand { padding-bottom: 20px; }
+  .sidebarGlow::before { bottom: 78px; }
+  .sidebarGlow::after { bottom: 30px; height: 38px; }
+}
 
 @media (max-width: 1540px) {
   .sidebar { width: 224px; }
