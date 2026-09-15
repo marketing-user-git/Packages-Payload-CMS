@@ -1,104 +1,98 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import styles from './RegFunnelDashboard.module.css'
 
 const API = '/api/regfunnel/stats'
 const RANGES = [30, 90, 180, 365, 1000, 3650]
 const STATES = ['in_progress', 'converted', 'completed', 'excluded']
+const APP_LABELS = { global: 'Global', china: 'China' }
+const STATE_LABELS = {
+  in_progress: 'In Progress',
+  converted: 'Converted',
+  completed: 'Completed',
+  excluded: 'Excluded',
+}
 
+const sum = (rows, key) => rows.reduce((total, row) => total + Number(row?.[key] || 0), 0)
 const fmt = (value) => Number(value || 0).toLocaleString()
 const pct = (a, b, digits = 1) => (b > 0 ? `${((Number(a || 0) / Number(b)) * 100).toFixed(digits)}%` : '—')
-const sum = (rows, key) => rows.reduce((total, row) => total + Number(row?.[key] || 0), 0)
+const shortStep = (value) => {
+  if (!value || value === '00_no_email_yet') return 'Before first email'
+  return String(value).replace(/^\d+_/, '').replaceAll('_', ' ')
+}
+const dateTime = (value) => (value ? new Date(value).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '—')
+const relativeDue = (value) => {
+  if (!value) return '—'
+  const diff = new Date(value).getTime() - Date.now()
+  const abs = Math.abs(diff)
+  const hours = Math.round(abs / 3600000)
+  if (hours < 1) return diff >= 0 ? 'Due soon' : 'Overdue'
+  if (hours < 48) return diff >= 0 ? `In ${hours}h` : `${hours}h overdue`
+  const days = Math.round(hours / 24)
+  return diff >= 0 ? `In ${days}d` : `${days}d overdue`
+}
 
-const labelState = (state) =>
-  ({
-    in_progress: 'In progress',
-    converted: 'Converted',
-    completed: 'Completed',
-    excluded: 'Excluded',
-  })[state] || state || 'Unknown'
+function Icon({ children }) {
+  return <span className={styles.icon}>{children}</span>
+}
 
-const labelRegion = (region) => (region === 'CNJP' ? 'CN / JP' : region || 'Unknown')
-const labelApp = (app) => (app === 'china' ? 'China' : app === 'global' ? 'Global' : app || 'Unknown')
-const labelStep = (step) =>
-  step === '00_no_email_yet'
-    ? 'Before 1st email'
-    : String(step || 'Unknown')
-        .replace(/^\d+_/, '')
-        .replace(/_/g, ' ')
+function StatusPill({ state }) {
+  return <span className={`${styles.statusPill} ${styles[`status_${state}`]}`}>{STATE_LABELS[state] || state}</span>
+}
 
-function matches(row, filters) {
+function Kpi({ label, value, note, tone, icon }) {
   return (
-    (filters.region === 'All' || row.funnel_region === filters.region) &&
-    (filters.app === 'All' || row.os_app === filters.app) &&
-    (filters.variant === 'All' || row.variant === filters.variant)
-  )
-}
-
-function rollupSteps(rows, rank) {
-  const map = new Map()
-  for (const row of rows) {
-    const key = row.step_id || '00_no_email_yet'
-    const item = map.get(key) || { step: key, A: 0, B: 0, total: 0 }
-    const value = Number(row.n || 0)
-    if (row.variant === 'B') item.B += value
-    else item.A += value
-    item.total += value
-    map.set(key, item)
-  }
-  return [...map.values()].sort((a, b) => rank(a.step) - rank(b.step) || a.step.localeCompare(b.step))
-}
-
-function Metric({ label, value, detail, tone = 'blue' }) {
-  return (
-    <div className={`${styles.metric} ${styles[`metric_${tone}`]}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </div>
-  )
-}
-
-function Pill({ children, tone = 'neutral' }) {
-  return <span className={`${styles.pill} ${styles[`pill_${tone}`]}`}>{children}</span>
-}
-
-function StepBars({ rows, emptyText, max }) {
-  if (!rows.length) return <div className={styles.empty}>{emptyText}</div>
-  return (
-    <div className={styles.stepList}>
-      {rows.map((row) => (
-        <div className={styles.stepRow} key={row.step}>
-          <div className={styles.stepTop}>
-            <div>
-              <strong>{labelStep(row.step)}</strong>
-              <code>{row.step}</code>
-            </div>
-            <div className={styles.stepCount}>
-              <b>{fmt(row.total)}</b>
-              <span>
-                A {fmt(row.A)} · B {fmt(row.B)}
-              </span>
-            </div>
-          </div>
-          <div className={styles.track}>
-            <span style={{ width: `${Math.max(2, (row.total / Math.max(1, max)) * 100)}%` }} />
-          </div>
+    <div className={`${styles.kpi} ${styles[`kpi_${tone}`]}`}>
+      <div className={styles.kpiTop}>
+        <Icon>{icon}</Icon>
+        <div>
+          <span>{label}</span>
+          <strong>{fmt(value)}</strong>
         </div>
-      ))}
+      </div>
+      <small>{note}</small>
     </div>
   )
 }
 
-export default function RegFunnelDashboard() {
+function Panel({ title, sub, action, children, className = '' }) {
+  return (
+    <section className={`${styles.panel} ${className}`}>
+      <div className={styles.panelHead}>
+        <div>
+          <h2>{title}</h2>
+          {sub && <p>{sub}</p>}
+        </div>
+        {action && <div className={styles.panelAction}>{action}</div>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+export default function RegFunnelDashboard({ onBack }) {
   const [days, setDays] = useState(1000)
   const [region, setRegion] = useState('All')
   const [app, setApp] = useState('All')
   const [variant, setVariant] = useState('All')
   const [stats, setStats] = useState(null)
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -108,19 +102,14 @@ export default function RegFunnelDashboard() {
     fetch(`${API}?days=${days}`, { credentials: 'include' })
       .then(async (response) => {
         const body = await response.json().catch(() => ({}))
-        if (!response.ok) {
-          throw new Error(body?.error || `Request failed (${response.status})`)
-        }
+        if (!response.ok) throw new Error(body?.error || `Request failed (${response.status})`)
         return body
       })
       .then((body) => {
-        if (!cancelled) setStats(body || {})
+        if (!cancelled) setStats(body)
       })
       .catch((err) => {
-        if (!cancelled) {
-          setStats(null)
-          setError(err?.message || 'Could not load RegFunnelOps data.')
-        }
+        if (!cancelled) setError(err?.message || 'Could not load RegFunnelOps data.')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -133,444 +122,336 @@ export default function RegFunnelDashboard() {
 
   const data = stats || {}
   const sequences = data.sequences || { ROW: [], CNJP: [] }
-
-  const order = useMemo(() => {
-    const seen = new Set(['00_no_email_yet'])
-    const out = ['00_no_email_yet']
-    for (const step of [...(sequences.ROW || []), ...(sequences.CNJP || [])]) {
-      if (!seen.has(step)) {
-        seen.add(step)
-        out.push(step)
-      }
-    }
-    return out
-  }, [sequences.ROW, sequences.CNJP])
-
-  const rank = (step) => {
-    const index = order.indexOf(step)
-    return index === -1 ? 9999 : index
-  }
-
   const filters = { region, app, variant }
-  const states = (data.states || []).filter((row) => matches(row, filters))
-  const convertedByStep = (data.convertedByStep || []).filter((row) => matches(row, filters))
-  const currentByStep = (data.currentByStep || []).filter((row) => matches(row, filters))
-  const engagement = (data.engagement || []).filter((row) => matches(row, filters))
+
+  const matches = (row) =>
+    (filters.region === 'All' || row.funnel_region === filters.region) &&
+    (filters.app === 'All' || row.os_app === filters.app) &&
+    (filters.variant === 'All' || row.variant === filters.variant)
+
+  const states = (data.states || []).filter(matches)
+  const engagement = (data.engagement || []).filter(matches)
+  const currentByStep = (data.currentByStep || []).filter(matches)
+  const convertedByStep = (data.convertedByStep || []).filter(matches)
 
   const enrolled = sum(states, 'n')
-  const stateCount = Object.fromEntries(
+  const stateCounts = Object.fromEntries(
     STATES.map((state) => [state, sum(states.filter((row) => row.state === state), 'n')]),
   )
+
   const sent = sum(engagement, 'sent')
   const delivered = sum(engagement, 'delivered')
-  const errors = sum(engagement, 'errors')
   const noRecipient = sum(engagement, 'no_recipient')
+  const sendErrors = sum(engagement, 'errors')
+  const unsubscribed = sum(engagement, 'unsubscribed')
 
-  const convertedSteps = rollupSteps(convertedByStep, rank)
-  const currentSteps = rollupSteps(currentByStep, rank)
-  const convertedMax = Math.max(1, ...convertedSteps.map((row) => row.total))
-  const currentMax = Math.max(1, ...currentSteps.map((row) => row.total))
-
-  const legacyRows = engagement.filter((row) => {
-    const sequence = sequences[row.funnel_region] || []
-    return row.step_id !== '00_no_email_yet' && !sequence.includes(row.step_id)
-  })
-
-  const invalidRouting = [
-    ...states.filter((row) => row.funnel_region === 'ROW' && row.os_app !== 'global'),
-    ...engagement.filter((row) => row.funnel_region === 'ROW' && row.os_app !== 'global'),
+  const sendHealth = [
+    { name: 'Sent', value: sent, tone: '#31e6b5' },
+    { name: 'No recipient', value: noRecipient, tone: '#3ab8ff' },
+    { name: 'Errors', value: sendErrors, tone: '#ff5f73' },
+    { name: 'Unsubscribed', value: unsubscribed, tone: '#a778ff' },
   ]
 
-  const engagementRows = [...engagement].sort(
-    (a, b) =>
-      String(a.funnel_region || '').localeCompare(String(b.funnel_region || '')) ||
-      rank(a.step_id) - rank(b.step_id) ||
-      String(a.os_app || '').localeCompare(String(b.os_app || '')) ||
-      String(a.variant || '').localeCompare(String(b.variant || '')),
-  )
+  const abRows = ['A', 'B'].map((v) => {
+    const s = states.filter((row) => row.variant === v)
+    const e = engagement.filter((row) => row.variant === v)
+    const n = sum(s, 'n')
+    const converted = sum(s.filter((row) => row.state === 'converted'), 'n')
+    return {
+      variant: v,
+      enrolled: n,
+      converted,
+      conversionRate: n ? (converted / n) * 100 : 0,
+      completed: sum(s.filter((row) => row.state === 'completed'), 'n'),
+      sent: sum(e, 'sent'),
+    }
+  })
 
-  const regionsToShow = region === 'All' ? ['ROW', 'CNJP'] : [region]
-  const abRows = regionsToShow.flatMap((reg) =>
-    ['A', 'B'].map((v) => {
-      const stateRows = (data.states || []).filter(
-        (row) =>
-          row.funnel_region === reg &&
-          row.variant === v &&
-          (app === 'All' || row.os_app === app),
-      )
-      const sendRows = (data.engagement || []).filter(
-        (row) =>
-          row.funnel_region === reg &&
-          row.variant === v &&
-          (app === 'All' || row.os_app === app),
-      )
-      const n = sum(stateRows, 'n')
-      const converted = sum(stateRows.filter((row) => row.state === 'converted'), 'n')
-      const completed = sum(stateRows.filter((row) => row.state === 'completed'), 'n')
-      const excluded = sum(stateRows.filter((row) => row.state === 'excluded'), 'n')
-      const sends = sum(sendRows, 'sent')
-      const deliveredCount = sum(sendRows, 'delivered')
-      return {
-        region: reg,
-        variant: v,
-        n,
-        converted,
-        completed,
-        excluded,
-        sent: sends,
-        delivered: deliveredCount,
-        opens: sum(sendRows, 'opened'),
-        clicks: sum(sendRows, 'clicked'),
-        errors: sum(sendRows, 'errors'),
-      }
-    }),
-  )
+  const currentStepMap = useMemo(() => {
+    const map = new Map()
+    for (const row of currentByStep) map.set(row.step_id, (map.get(row.step_id) || 0) + Number(row.n || 0))
+    return map
+  }, [currentByStep])
 
-  const appRows = ['global', 'china']
-    .filter((name) => app === 'All' || app === name)
-    .map((name) => {
-      const stateRows = (data.states || []).filter(
-        (row) => row.os_app === name && (region === 'All' || row.funnel_region === region),
-      )
-      const sendRows = (data.engagement || []).filter(
-        (row) => row.os_app === name && (region === 'All' || row.funnel_region === region),
-      )
-      return {
-        app: name,
-        enrolled: sum(stateRows, 'n'),
-        inProgress: sum(stateRows.filter((row) => row.state === 'in_progress'), 'n'),
-        converted: sum(stateRows.filter((row) => row.state === 'converted'), 'n'),
-        completed: sum(stateRows.filter((row) => row.state === 'completed'), 'n'),
-        excluded: sum(stateRows.filter((row) => row.state === 'excluded'), 'n'),
-        sent: sum(sendRows, 'sent'),
-        delivered: sum(sendRows, 'delivered'),
-        errors: sum(sendRows, 'errors'),
-        noRecipient: sum(sendRows, 'no_recipient'),
-      }
-    })
+  const selectedSequence = region === 'CNJP' ? sequences.CNJP || [] : sequences.ROW || []
+  const journeySteps = selectedSequence.map((step, index) => ({
+    step,
+    index: index + 1,
+    active: currentStepMap.get(step) || 0,
+  }))
+
+  const trend = (data.trend || []).map((row) => ({
+    ...row,
+    enrolled: Number(row.enrolled || 0),
+    converted: Number(row.converted || 0),
+    completed: Number(row.completed || 0),
+  }))
+
+  const regionPerformance = ['ROW', 'CNJP'].map((reg) => {
+    const rows = (data.states || []).filter((row) => row.funnel_region === reg)
+    const total = sum(rows, 'n')
+    const converted = sum(rows.filter((row) => row.state === 'converted'), 'n')
+    return { region: reg, total, converted, rate: total ? (converted / total) * 100 : 0 }
+  })
+
+  const conversionByStep = useMemo(() => {
+    const map = new Map()
+    for (const row of convertedByStep) {
+      const key = row.step_id
+      map.set(key, (map.get(key) || 0) + Number(row.n || 0))
+    }
+    return [...map.entries()].map(([step, value]) => ({ step: shortStep(step), value }))
+  }, [convertedByStep])
+
+  const recent = (data.recentEnrollments || []).filter((row) => {
+    if (region !== 'All' && row.funnel_region !== region) return false
+    if (app !== 'All' && row.os_app !== app) return false
+    if (variant !== 'All' && row.variant !== variant) return false
+    return true
+  })
+
+  const legacySteps = engagement.filter((row) => {
+    const sequence = sequences[row.funnel_region] || []
+    return !sequence.includes(row.step_id)
+  })
+
+  if (loading) {
+    return <div className={styles.loading}>Loading live RegFunnelOps data…</div>
+  }
+
+  if (error) {
+    return <div className={styles.errorBox}>RegFunnelOps could not load: {error}</div>
+  }
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <div className={styles.eyebrow}>REGFUNNELOPS · LIVE DATA</div>
-          <h1>Registration Funnel Dashboard</h1>
-          <p>
-            Funnel state, A/B performance and send health from FunnelEnrollment, SendLog and Events.
-          </p>
+    <div className={styles.shell}>
+      <aside className={styles.sidebar}>
+        <div className={styles.brand}>
+          <div className={styles.brandMark}>RF</div>
+          <div>
+            <strong>RegFunnelOps</strong>
+            <small>Marketing Operations</small>
+          </div>
         </div>
-        <a className={styles.back} href="/?app=analytics&tab=Journeys">
-          Back to Analytics
-        </a>
-      </header>
 
-      <section className={styles.toolbar}>
-        <label>
-          <span>Enrollment cohort</span>
-          <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
-            {RANGES.map((value) => (
-              <option key={value} value={value}>
-                Last {value} days
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Region</span>
-          <select value={region} onChange={(event) => setRegion(event.target.value)}>
-            <option value="All">All regions</option>
-            <option value="ROW">ROW</option>
-            <option value="CNJP">CN / JP</option>
-          </select>
-        </label>
-        <label>
-          <span>OneSignal app</span>
-          <select value={app} onChange={(event) => setApp(event.target.value)}>
-            <option value="All">All apps</option>
-            <option value="global">Global</option>
-            <option value="china">China</option>
-          </select>
-        </label>
-        <label>
-          <span>Variant</span>
-          <select value={variant} onChange={(event) => setVariant(event.target.value)}>
-            <option value="All">A + B</option>
-            <option value="A">A</option>
-            <option value="B">B</option>
-          </select>
-        </label>
-        <div className={styles.generated}>
-          <span>Cohort basis</span>
-          <strong>{data.cohortBasis || '—'}</strong>
-          <small>{data.generatedAt ? new Date(data.generatedAt).toLocaleString() : ''}</small>
+        <nav className={styles.nav}>
+          <a className={styles.navActive} href="#overview">⌂ <span>Overview</span></a>
+          <a href="#enrollments">▣ <span>Enrollments</span></a>
+          <a href="#journey">⇄ <span>Journey</span></a>
+          <a href="#ab">⚗ <span>A/B Tests</span></a>
+          <a href="#send-health">✉ <span>Sends & Errors</span></a>
+          <a href="#regions">◎ <span>Regions</span></a>
+          <a href="#settings">⚙ <span>Settings</span></a>
+        </nav>
+
+        <div className={styles.sidebarQuote}>
+          <strong>Smarter journeys.<br />Higher impact.</strong>
+          <span>Monitor. Learn. Convert.</span>
         </div>
-      </section>
+      </aside>
 
-      {loading && <div className={styles.notice}>Loading live funnel data…</div>}
-      {!loading && error && (
-        <div className={`${styles.notice} ${styles.noticeError}`}>
-          <strong>Could not load dashboard.</strong>
-          <span>{error}. If this is 401, sign in on the main app first.</span>
+      <main className={styles.main} id="overview">
+        <div className={styles.topbar}>
+          <div className={styles.search}>⌕ <span>Search enrollments, external IDs or steps…</span></div>
+          <div className={styles.topFilters}>
+            <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
+              {RANGES.map((value) => <option key={value} value={value}>Last {value} days</option>)}
+            </select>
+            <select value={app} onChange={(e) => setApp(e.target.value)}>
+              <option value="All">All Apps</option>
+              <option value="global">Global</option>
+              <option value="china">China</option>
+            </select>
+            <select value={region} onChange={(e) => setRegion(e.target.value)}>
+              <option value="All">All Regions</option>
+              <option value="ROW">ROW</option>
+              <option value="CNJP">CN / JP</option>
+            </select>
+            <select value={variant} onChange={(e) => setVariant(e.target.value)}>
+              <option value="All">All Variants</option>
+              <option value="A">Variant A</option>
+              <option value="B">Variant B</option>
+            </select>
+            {onBack && <button className={styles.backBtn} onClick={onBack}>Back</button>}
+          </div>
         </div>
-      )}
 
-      {!loading && !error && (
-        <>
-          <section className={styles.metrics}>
-            <Metric label="Enrolled" value={fmt(enrolled)} detail={`Last ${days} days`} tone="blue" />
-            <Metric
-              label="In progress"
-              value={fmt(stateCount.in_progress)}
-              detail={pct(stateCount.in_progress, enrolled)}
-              tone="amber"
-            />
-            <Metric
-              label="Converted"
-              value={fmt(stateCount.converted)}
-              detail={`${pct(stateCount.converted, enrolled)} conversion`}
-              tone="green"
-            />
-            <Metric
-              label="Completed"
-              value={fmt(stateCount.completed)}
-              detail={pct(stateCount.completed, enrolled)}
-              tone="purple"
-            />
-            <Metric
-              label="Excluded"
-              value={fmt(stateCount.excluded)}
-              detail={pct(stateCount.excluded, enrolled)}
-              tone="red"
-            />
-          </section>
+        <header className={styles.hero}>
+          <div>
+            <h1>RegFunnelOps</h1>
+            <p>Registration funnel operations to turn interest into impact.</p>
+          </div>
+          <span>LESS FRICTION. MORE PEOPLE FORWARD.</span>
+        </header>
 
-          <section className={styles.metricsSecondary}>
-            <Metric label="Sent" value={fmt(sent)} detail={`${pct(delivered, sent)} delivered`} tone="blue" />
-            <Metric label="No recipient" value={fmt(noRecipient)} detail="OneSignal alias missing" tone="amber" />
-            <Metric label="Send errors" value={fmt(errors)} detail="SendLog result = error" tone="red" />
-            <Metric
-              label="Data integrity"
-              value={legacyRows.length + invalidRouting.length ? 'Review' : 'Clean'}
-              detail={`${legacyRows.length} legacy step rows · ${invalidRouting.length} routing issues`}
-              tone={legacyRows.length + invalidRouting.length ? 'amber' : 'green'}
-            />
-          </section>
+        <section className={styles.kpiGrid}>
+          <Kpi label="Enrolled" value={enrolled} note={`Cohort: last ${days} days`} tone="cyan" icon="◉" />
+          <Kpi label="In Progress" value={stateCounts.in_progress} note={pct(stateCounts.in_progress, enrolled)} tone="blue" icon="▶" />
+          <Kpi label="Converted" value={stateCounts.converted} note={`${pct(stateCounts.converted, enrolled)} conversion`} tone="green" icon="▥" />
+          <Kpi label="Completed" value={stateCounts.completed} note={pct(stateCounts.completed, enrolled)} tone="teal" icon="✓" />
+          <Kpi label="Excluded" value={stateCounts.excluded} note={pct(stateCounts.excluded, enrolled)} tone="red" icon="⊘" />
+        </section>
 
-          {(legacyRows.length > 0 || invalidRouting.length > 0) && (
-            <div className={`${styles.notice} ${styles.noticeWarning}`}>
-              <strong>Data integrity warning</strong>
-              <span>
-                {legacyRows.length > 0
-                  ? `${legacyRows.length} engagement row(s) use a step outside the current region sequence. `
-                  : ''}
-                {invalidRouting.length > 0
-                  ? `${invalidRouting.length} ROW row(s) are not routed through the Global app.`
-                  : ''}
-              </span>
-            </div>
-          )}
-
-          <section className={styles.card}>
-            <div className={styles.cardHead}>
-              <div>
-                <h2>Funnel state</h2>
-                <p>Current state of users inside the selected enrollment cohort.</p>
-              </div>
-              <Pill tone="blue">{fmt(enrolled)} total</Pill>
-            </div>
-            <div className={styles.stateGrid}>
-              {STATES.map((state) => (
-                <div className={styles.stateItem} key={state}>
-                  <span>{labelState(state)}</span>
-                  <strong>{fmt(stateCount[state])}</strong>
-                  <small>{pct(stateCount[state], enrolled)}</small>
+        <section className={styles.topGrid}>
+          <Panel
+            title="Funnel Journey"
+            sub={region === 'All' ? 'ROW sequence shown. Use region filter to inspect CN / JP.' : `${region === 'CNJP' ? 'CN / JP' : 'ROW'} sequence`}
+            className={styles.journeyPanel}
+            action={<span>{journeySteps.length} steps</span>}
+          >
+            <div className={styles.journeySteps} id="journey">
+              {journeySteps.slice(0, 8).map((item) => (
+                <div className={styles.journeyStep} key={item.step}>
+                  <span className={styles.stepIndex}>{item.index}</span>
+                  <strong>{shortStep(item.step)}</strong>
+                  <small>{item.active ? `${item.active} active` : 'No active users'}</small>
                 </div>
               ))}
             </div>
-          </section>
+            <div className={styles.miniChart}>
+              <ResponsiveContainer width="100%" height={110}>
+                <BarChart data={trend.slice(-24)}>
+                  <Bar dataKey="enrolled" fill="#16d9d3" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Panel>
 
-          <section className={styles.card}>
-            <div className={styles.cardHead}>
-              <div>
-                <h2>A/B by region</h2>
-                <p>Sequence-level conversion. Engagement uses the same enrollment cohort.</p>
+          <Panel title="Send Health" sub="Delivery and send outcomes" className={styles.sendPanel}>
+            <div className={styles.sendHealth} id="send-health">
+              <div className={styles.donut}>
+                <ResponsiveContainer width="100%" height={185}>
+                  <PieChart>
+                    <Pie data={sendHealth} dataKey="value" innerRadius={55} outerRadius={76} paddingAngle={2}>
+                      {sendHealth.map((item) => <Cell key={item.name} fill={item.tone} />)}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className={styles.donutCenter}><strong>{fmt(sent + noRecipient + sendErrors)}</strong><span>Total attempts</span></div>
               </div>
-              <Pill>{app === 'All' ? 'All apps' : `${labelApp(app)} app`}</Pill>
-            </div>
-            <div className={styles.tableWrap}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Region</th>
-                    <th>Variant</th>
-                    <th>Enrolled</th>
-                    <th>Converted</th>
-                    <th>Conv. rate</th>
-                    <th>Completed</th>
-                    <th>Excluded</th>
-                    <th>Sent</th>
-                    <th>Delivery</th>
-                    <th>Open</th>
-                    <th>Click</th>
-                    <th>Errors</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {abRows.map((row) => (
-                    <tr key={`${row.region}-${row.variant}`}>
-                      <td>{labelRegion(row.region)}</td>
-                      <td><strong>{row.variant}</strong></td>
-                      <td>{fmt(row.n)}</td>
-                      <td>{fmt(row.converted)}</td>
-                      <td><strong>{pct(row.converted, row.n, 2)}</strong></td>
-                      <td>{fmt(row.completed)}</td>
-                      <td>{fmt(row.excluded)}</td>
-                      <td>{fmt(row.sent)}</td>
-                      <td>{pct(row.delivered, row.sent)}</td>
-                      <td>{pct(row.opens, row.delivered)}</td>
-                      <td>{pct(row.clicks, row.delivered)}</td>
-                      <td>{fmt(row.errors)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className={styles.card}>
-            <div className={styles.cardHead}>
-              <div>
-                <h2>Global vs China app</h2>
-                <p>Separate send-channel health so China issues do not disappear inside CN / JP totals.</p>
+              <div className={styles.legend}>
+                {sendHealth.map((item) => (
+                  <div key={item.name}><i style={{ background: item.tone }} /><span>{item.name}</span><strong>{fmt(item.value)}</strong></div>
+                ))}
               </div>
             </div>
-            <div className={styles.tableWrap}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>App</th>
-                    <th>Enrolled</th>
-                    <th>In progress</th>
-                    <th>Converted</th>
-                    <th>Completed</th>
-                    <th>Excluded</th>
-                    <th>Sent</th>
-                    <th>Delivered</th>
-                    <th>No recipient</th>
-                    <th>Errors</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {appRows.map((row) => (
-                    <tr key={row.app}>
-                      <td><strong>{labelApp(row.app)}</strong></td>
-                      <td>{fmt(row.enrolled)}</td>
-                      <td>{fmt(row.inProgress)}</td>
-                      <td>{fmt(row.converted)}</td>
-                      <td>{fmt(row.completed)}</td>
-                      <td>{fmt(row.excluded)}</td>
-                      <td>{fmt(row.sent)}</td>
-                      <td>{fmt(row.delivered)} <small>({pct(row.delivered, row.sent)})</small></td>
-                      <td>{fmt(row.noRecipient)}</td>
-                      <td>{fmt(row.errors)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className={`${styles.healthNote} ${sendErrors > 0 ? styles.healthWarn : ''}`}>
+              {sendErrors > 0 ? `${sendErrors} send error(s) need review.` : 'Send health is stable.'}
             </div>
-          </section>
+          </Panel>
 
-          <section className={styles.twoCol}>
-            <div className={styles.card}>
-              <div className={styles.cardHead}>
-                <div>
-                  <h2>Conversion by step</h2>
-                  <p>Last email actually sent before conversion.</p>
+          <Panel title="A/B Test Performance" sub="Sequence-level conversion" className={styles.abPanel} action={<span id="ab">Conversion Rate</span>}>
+            <div className={styles.abList}>
+              {abRows.map((row) => (
+                <div className={styles.abRow} key={row.variant}>
+                  <div className={styles.variantBadge}>{row.variant}</div>
+                  <div className={styles.abBody}>
+                    <div><strong>Variant {row.variant}</strong><span>{fmt(row.converted)} / {fmt(row.enrolled)}</span></div>
+                    <div className={styles.progress}><i style={{ width: `${Math.min(100, row.conversionRate)}%` }} /></div>
+                  </div>
+                  <strong>{row.conversionRate.toFixed(1)}%</strong>
                 </div>
-              </div>
-              <StepBars rows={convertedSteps} max={convertedMax} emptyText="No conversions in this cohort." />
+              ))}
             </div>
-            <div className={styles.card}>
-              <div className={styles.cardHead}>
-                <div>
-                  <h2>Where active users are</h2>
-                  <p>Current step of users still in progress.</p>
+          </Panel>
+        </section>
+
+        <section className={styles.midGrid}>
+          <Panel title="Performance Over Time" sub="Enrollment cohort trend" className={styles.performancePanel}>
+            <ResponsiveContainer width="100%" height={230}>
+              <LineChart data={trend}>
+                <CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} />
+                <XAxis dataKey="day" tick={{ fill: '#758da6', fontSize: 10 }} minTickGap={26} />
+                <YAxis tick={{ fill: '#758da6', fontSize: 10 }} width={36} />
+                <Tooltip contentStyle={{ background: '#0b2035', border: '1px solid #1c3b56', borderRadius: 10 }} />
+                <Line dataKey="enrolled" stroke="#25c9ff" strokeWidth={2.2} dot={false} />
+                <Line dataKey="converted" stroke="#31e6b5" strokeWidth={2.2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </Panel>
+
+          <Panel title="Top Insights" sub="Operational signals" className={styles.insightsPanel}>
+            <div className={styles.insights}>
+              <div><i className={styles.good}>↗</i><span><strong>Conversion rate</strong><small>{pct(stateCounts.converted, enrolled)} of the selected cohort has converted.</small></span></div>
+              <div><i className={sendErrors ? styles.bad : styles.good}>!</i><span><strong>Send errors</strong><small>{sendErrors ? `${sendErrors} error(s) recorded in SendLog.` : 'No send errors in this cohort.'}</small></span></div>
+              <div><i className={legacySteps.length ? styles.bad : styles.info}>i</i><span><strong>Sequence integrity</strong><small>{legacySteps.length ? `${legacySteps.length} legacy step row(s) detected.` : 'All engagement rows match the live sequences.'}</small></span></div>
+            </div>
+          </Panel>
+
+          <Panel title="Regional Performance" sub="Conversion rate by funnel region" className={styles.regionPanel}>
+            <div className={styles.regionList} id="regions">
+              {regionPerformance.map((row) => (
+                <div key={row.region}>
+                  <span>{row.region === 'CNJP' ? 'CN / JP' : row.region}</span>
+                  <div className={styles.regionBar}><i style={{ width: `${Math.min(100, row.rate)}%` }} /></div>
+                  <strong>{row.rate.toFixed(1)}%</strong>
                 </div>
-              </div>
-              <StepBars rows={currentSteps} max={currentMax} emptyText="No users are currently in progress." />
+              ))}
             </div>
-          </section>
+          </Panel>
+        </section>
 
-          <section className={styles.card}>
-            <div className={styles.cardHead}>
-              <div>
-                <h2>Engagement by step</h2>
-                <p>SendLog plus Events, sorted by the live sequence from Funnel Config.</p>
-              </div>
-              <Pill tone={legacyRows.length ? 'amber' : 'green'}>
-                {legacyRows.length ? `${legacyRows.length} legacy` : 'Sequence clean'}
-              </Pill>
-            </div>
-            <div className={styles.tableWrap}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Step</th>
-                    <th>Region</th>
-                    <th>App</th>
-                    <th>Var.</th>
-                    <th>Sent</th>
-                    <th>No recipient</th>
-                    <th>Errors</th>
-                    <th>Delivered</th>
-                    <th>Open</th>
-                    <th>Click</th>
-                    <th>Unsub</th>
-                    <th>Bounced</th>
+        {conversionByStep.length > 0 && (
+          <Panel title="Conversions by Step" sub="Last email sent before conversion">
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={conversionByStep} layout="vertical">
+                <CartesianGrid stroke="rgba(255,255,255,.05)" horizontal={false} />
+                <XAxis type="number" tick={{ fill: '#758da6', fontSize: 10 }} />
+                <YAxis type="category" dataKey="step" width={150} tick={{ fill: '#9bb0c3', fontSize: 10 }} />
+                <Tooltip contentStyle={{ background: '#0b2035', border: '1px solid #1c3b56', borderRadius: 10 }} />
+                <Bar dataKey="value" fill="#31e6b5" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Panel>
+        )}
+
+        <Panel
+          title="Recent Enrollments"
+          sub="Live enrollment state and next scheduled action"
+          className={styles.enrollmentPanel}
+          action={<span>{recent.length} shown</span>}
+        >
+          <div className={styles.tableWrap} id="enrollments">
+            <table>
+              <thead>
+                <tr>
+                  <th>External ID</th>
+                  <th>Country</th>
+                  <th>Culture</th>
+                  <th>Region</th>
+                  <th>App</th>
+                  <th>Variant</th>
+                  <th>State</th>
+                  <th>Current Step</th>
+                  <th>Next Send</th>
+                  <th>Enrolled At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!recent.length && <tr><td colSpan={10} className={styles.empty}>No enrollments in this cohort.</td></tr>}
+                {recent.map((row) => (
+                  <tr key={row.external_id}>
+                    <td><strong>{row.external_id}</strong></td>
+                    <td>{row.country || '—'}</td>
+                    <td>{row.culture || '—'}</td>
+                    <td>{row.funnel_region === 'CNJP' ? 'CN / JP' : row.funnel_region}</td>
+                    <td>{APP_LABELS[row.os_app] || row.os_app}</td>
+                    <td><b className={styles.variantText}>{row.variant}</b></td>
+                    <td><StatusPill state={row.state} /></td>
+                    <td title={row.current_step}>{shortStep(row.current_step)}</td>
+                    <td className={row.next_send_at && new Date(row.next_send_at) < new Date() ? styles.overdue : ''}>{relativeDue(row.next_send_at)}</td>
+                    <td>{dateTime(row.enrolled_at)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {!engagementRows.length && (
-                    <tr>
-                      <td colSpan={12} className={styles.emptyCell}>No send activity in this cohort.</td>
-                    </tr>
-                  )}
-                  {engagementRows.map((row) => {
-                    const sequence = sequences[row.funnel_region] || []
-                    const legacy = row.step_id !== '00_no_email_yet' && !sequence.includes(row.step_id)
-                    return (
-                      <tr key={`${row.funnel_region}-${row.os_app}-${row.variant}-${row.step_id}`}>
-                        <td>
-                          <div className={styles.stepCell}>
-                            <strong>{labelStep(row.step_id)}</strong>
-                            <code>{row.step_id}</code>
-                            {legacy && <Pill tone="amber">legacy</Pill>}
-                          </div>
-                        </td>
-                        <td>{labelRegion(row.funnel_region)}</td>
-                        <td>{labelApp(row.os_app)}</td>
-                        <td><strong>{row.variant}</strong></td>
-                        <td>{fmt(row.sent)}</td>
-                        <td>{fmt(row.no_recipient)}</td>
-                        <td>{fmt(row.errors)}</td>
-                        <td>{fmt(row.delivered)} <small>({pct(row.delivered, row.sent)})</small></td>
-                        <td>{pct(row.opened, row.delivered)}</td>
-                        <td>{pct(row.clicked, row.delivered)}</td>
-                        <td>{pct(row.unsubscribed, row.delivered, 2)}</td>
-                        <td>{fmt(row.bounced)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
 
-          <footer className={styles.footer}>
-            Live RegFunnelOps data · no mock funnel metrics on this page.
-          </footer>
-        </>
-      )}
+        <footer className={styles.footer}>
+          Live RegFunnelOps data · cohort basis: {data.cohortBasis || 'enrolledAt'} · generated {dateTime(data.generatedAt)}
+        </footer>
+      </main>
     </div>
   )
 }
