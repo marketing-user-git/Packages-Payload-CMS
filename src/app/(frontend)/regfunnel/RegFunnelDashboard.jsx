@@ -18,6 +18,8 @@ import {
 import styles from './RegFunnelDashboard.module.css'
 
 const API = '/api/regfunnel/stats'
+const USER_API = '/api/users/me'
+const THEME_KEY = 'em-internal-theme'
 const RANGES = [30, 90, 180, 365, 1000, 3650]
 const STATES = ['in_progress', 'converted', 'completed', 'excluded']
 const APP_LABELS = { global: 'Global', china: 'China' }
@@ -27,22 +29,43 @@ const STATE_LABELS = {
   completed: 'Completed',
   excluded: 'Excluded',
 }
-const FLAG = {
-  Cyprus: '🇨🇾',
-  China: '🇨🇳',
-  Japan: '🇯🇵',
-  'United Kingdom': '🇬🇧',
-  UK: '🇬🇧',
-  Australia: '🇦🇺',
-  Germany: '🇩🇪',
-  France: '🇫🇷',
-  Spain: '🇪🇸',
-  Italy: '🇮🇹',
-  Canada: '🇨🇦',
-  USA: '🇺🇸',
-  'United States': '🇺🇸',
-  Brazil: '🇧🇷',
-  Portugal: '🇵🇹',
+const COUNTRY_CODE = {
+  Cyprus: 'cy',
+  China: 'cn',
+  Japan: 'jp',
+  'United Kingdom': 'gb',
+  UK: 'gb',
+  Australia: 'au',
+  Germany: 'de',
+  France: 'fr',
+  Spain: 'es',
+  Italy: 'it',
+  Canada: 'ca',
+  USA: 'us',
+  'United States': 'us',
+  Brazil: 'br',
+  Portugal: 'pt',
+  Greece: 'gr',
+  Poland: 'pl',
+  Austria: 'at',
+  Switzerland: 'ch',
+  Netherlands: 'nl',
+  Sweden: 'se',
+  Norway: 'no',
+  Denmark: 'dk',
+  Finland: 'fi',
+  Ireland: 'ie',
+  'South Africa': 'za',
+  'United Arab Emirates': 'ae',
+  Singapore: 'sg',
+  Malaysia: 'my',
+  Thailand: 'th',
+  Indonesia: 'id',
+  Vietnam: 'vn',
+  Philippines: 'ph',
+  Mexico: 'mx',
+  Chile: 'cl',
+  Argentina: 'ar',
 }
 
 const sum = (rows, key) => rows.reduce((total, row) => total + Number(row?.[key] || 0), 0)
@@ -77,8 +100,17 @@ const deltaLabel = (value) => {
 const hoursLabel = (hours) => {
   if (hours == null || !Number.isFinite(Number(hours))) return '—'
   const value = Number(hours)
-  if (value < 24) return `${value.toFixed(1)}h`
-  return `${(value / 24).toFixed(1)}d`
+  return value < 24 ? `${value.toFixed(1)}h` : `${(value / 24).toFixed(1)}d`
+}
+const titleCase = (value) =>
+  String(value || '')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+const initialTheme = () => {
+  if (typeof window === 'undefined') return 'dark'
+  const stored = window.localStorage.getItem(THEME_KEY)
+  if (stored === 'dark' || stored === 'light') return stored
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
 }
 
 function Icon({ type, size = 18 }) {
@@ -91,80 +123,22 @@ function Icon({ type, size = 18 }) {
     strokeWidth: 1.8,
     strokeLinecap: 'round',
     strokeLinejoin: 'round',
+    'aria-hidden': true,
   }
   const paths = {
-    home: (
-      <>
-        <path d="M3 11 12 3l9 8" />
-        <path d="M5 10v10h14V10" />
-        <path d="M9 20v-6h6v6" />
-      </>
-    ),
-    users: (
-      <>
-        <circle cx="9" cy="8" r="3" />
-        <path d="M3 20c0-4 2-6 6-6s6 2 6 6" />
-        <path d="M16 5c2 0 3 1.5 3 3s-1 3-3 3" />
-        <path d="M17 14c3 .4 4 2.2 4 5" />
-      </>
-    ),
-    journey: (
-      <>
-        <path d="M4 7h10" />
-        <path d="m11 4 3 3-3 3" />
-        <path d="M20 17H10" />
-        <path d="m13 14-3 3 3 3" />
-        <circle cx="5" cy="17" r="2" />
-        <circle cx="19" cy="7" r="2" />
-      </>
-    ),
-    flask: (
-      <>
-        <path d="M9 3h6" />
-        <path d="M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3" />
-        <path d="M8 15h8" />
-      </>
-    ),
-    mail: (
-      <>
-        <rect x="3" y="5" width="18" height="14" rx="2" />
-        <path d="m3 7 9 6 9-6" />
-      </>
-    ),
-    report: (
-      <>
-        <path d="M5 3h10l4 4v14H5z" />
-        <path d="M14 3v5h5" />
-        <path d="M8 16v2" />
-        <path d="M12 13v5" />
-        <path d="M16 11v7" />
-      </>
-    ),
-    calendar: (
-      <>
-        <rect x="3" y="5" width="18" height="16" rx="2" />
-        <path d="M16 3v4M8 3v4M3 10h18" />
-      </>
-    ),
-    bell: (
-      <>
-        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-        <path d="M10 21h4" />
-      </>
-    ),
-    search: (
-      <>
-        <circle cx="11" cy="11" r="7" />
-        <path d="m20 20-4-4" />
-      </>
-    ),
-    export: (
-      <>
-        <path d="M12 3v12" />
-        <path d="m8 7 4-4 4 4" />
-        <path d="M5 14v6h14v-6" />
-      </>
-    ),
+    home: <><path d="M3 11 12 3l9 8" /><path d="M5 10v10h14V10" /><path d="M9 20v-6h6v6" /></>,
+    users: <><circle cx="9" cy="8" r="3" /><path d="M3 20c0-4 2-6 6-6s6 2 6 6" /><path d="M16 5c2 0 3 1.5 3 3s-1 3-3 3" /><path d="M17 14c3 .4 4 2.2 4 5" /></>,
+    journey: <><path d="M4 7h10" /><path d="m11 4 3 3-3 3" /><path d="M20 17H10" /><path d="m13 14-3 3 3 3" /><circle cx="5" cy="17" r="2" /><circle cx="19" cy="7" r="2" /></>,
+    flask: <><path d="M9 3h6" /><path d="M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3" /><path d="M8 15h8" /></>,
+    mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
+    report: <><path d="M5 3h10l4 4v14H5z" /><path d="M14 3v5h5" /><path d="M8 16v2" /><path d="M12 13v5" /><path d="M16 11v7" /></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>,
+    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    export: <><path d="M12 3v12" /><path d="m8 7 4-4 4 4" /><path d="M5 14v6h14v-6" /></>,
+    sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41" /></>,
+    moon: <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z" />,
+    open: <><path d="M14 3h7v7" /><path d="M10 14 21 3" /><path d="M21 14v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h6" /></>,
   }
   return <svg {...common}>{paths[type] || paths.home}</svg>
 }
@@ -172,41 +146,50 @@ function Icon({ type, size = 18 }) {
 function NavItem({ href, icon, label, sub, active }) {
   return (
     <a href={href} className={active ? styles.navActive : ''}>
-      <span className={styles.navIcon}>
-        <Icon type={icon} size={17} />
-      </span>
-      <span>
-        <strong>{label}</strong>
-        <small>{sub}</small>
-      </span>
+      <span className={styles.navIcon}><Icon type={icon} size={18} /></span>
+      <span><strong>{label}</strong><small>{sub}</small></span>
     </a>
   )
 }
 
 function StatusPill({ state }) {
+  return <span className={`${styles.statusPill} ${styles[`status_${state}`]}`}>{STATE_LABELS[state] || state}</span>
+}
+
+function CountryFlag({ country }) {
+  const code = COUNTRY_CODE[country]
+  const fallback = code ? code.toUpperCase() : String(country || '—').slice(0, 2).toUpperCase()
   return (
-    <span className={`${styles.statusPill} ${styles[`status_${state}`]}`}>
-      {STATE_LABELS[state] || state}
+    <span className={styles.flagFrame} aria-hidden="true">
+      <span className={styles.flagFallback}>{fallback}</span>
+      {code && (
+        <img
+          src={`https://flagcdn.com/w40/${code}.png`}
+          alt=""
+          loading="lazy"
+          onError={(event) => { event.currentTarget.style.display = 'none' }}
+        />
+      )}
     </span>
   )
 }
 
-function Sparkline({ data, dataKey, tone }) {
-  if (!Array.isArray(data) || data.length < 2) {
-    return <div className={styles.sparkEmpty} />
-  }
-
+function FilterSelect({ label, value, onChange, children, icon }) {
   return (
-    <div className={styles.sparkline}>
-      <LineChart width={72} height={38} data={data}>
-        <Line
-          type="monotone"
-          dataKey={dataKey}
-          stroke={tone}
-          strokeWidth={2}
-          dot={false}
-          isAnimationActive={false}
-        />
+    <label className={styles.selectControl}>
+      {icon && <Icon type={icon} size={15} />}
+      <select aria-label={label} value={value} onChange={onChange}>{children}</select>
+      <span className={styles.selectChevron} aria-hidden="true" />
+    </label>
+  )
+}
+
+function Sparkline({ data, dataKey, tone }) {
+  if (!Array.isArray(data) || data.length < 2) return null
+  return (
+    <div className={styles.sparkline} aria-hidden="true">
+      <LineChart width={82} height={42} data={data}>
+        <Line type="monotone" dataKey={dataKey} stroke={tone} strokeWidth={2.3} dot={false} isAnimationActive={false} />
       </LineChart>
     </div>
   )
@@ -214,26 +197,27 @@ function Sparkline({ data, dataKey, tone }) {
 
 function Kpi({ label, value, previous, tone, icon, sparkData, sparkKey }) {
   const change = delta(value, previous)
+  const hasSpark = Array.isArray(sparkData) && sparkData.length > 1
   return (
-    <div className={`${styles.kpi} ${styles[`kpi_${tone}`]}`}>
+    <article className={`${styles.kpi} ${styles[`kpi_${tone}`]} ${hasSpark ? styles.kpiWithSpark : ''}`}>
       <div className={styles.kpiMain}>
         <span className={styles.kpiIcon}>{icon}</span>
-        <div>
+        <div className={styles.kpiValue}>
           <span>{label}</span>
           <strong>{fmt(value)}</strong>
         </div>
-        <Sparkline
-          data={sparkData}
-          dataKey={sparkKey}
-          tone={
-            tone === 'red' ? '#ff6173' : tone === 'green' || tone === 'teal' ? '#31e6b5' : '#2bc8ff'
-          }
-        />
+        {hasSpark && (
+          <Sparkline
+            data={sparkData}
+            dataKey={sparkKey}
+            tone={tone === 'red' ? '#e84f65' : tone === 'green' || tone === 'teal' ? '#1db982' : '#1188b5'}
+          />
+        )}
       </div>
       <div className={`${styles.kpiDelta} ${change != null && change < 0 ? styles.deltaDown : ''}`}>
         {deltaLabel(change)}
       </div>
-    </div>
+    </article>
   )
 }
 
@@ -241,10 +225,7 @@ function Panel({ title, sub, action, children, className = '' }) {
   return (
     <section className={`${styles.panel} ${className}`}>
       <div className={styles.panelHead}>
-        <div>
-          <h2>{title}</h2>
-          {sub && <p>{sub}</p>}
-        </div>
+        <div><h2>{title}</h2>{sub && <p>{sub}</p>}</div>
         {action && <div className={styles.panelAction}>{action}</div>}
       </div>
       {children}
@@ -259,7 +240,13 @@ function sortValue(row, key) {
   return String(value).toLowerCase()
 }
 
-export default function RegFunnelDashboard({ onBack, user, onLogout }) {
+export default function RegFunnelDashboard({
+  onBack,
+  user,
+  onLogout,
+  theme: themeProp,
+  onToggleTheme,
+}) {
   const [days, setDays] = useState(1000)
   const [region, setRegion] = useState('All')
   const [app, setApp] = useState('All')
@@ -273,6 +260,29 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
   const [showSequence, setShowSequence] = useState(false)
   const [sortKey, setSortKey] = useState('enrolled_at')
   const [sortDir, setSortDir] = useState('desc')
+  const [localTheme, setLocalTheme] = useState(initialTheme)
+  const [resolvedUser, setResolvedUser] = useState(user || null)
+
+  const theme = themeProp || localTheme
+  const toggleTheme = onToggleTheme || (() => setLocalTheme((current) => (current === 'dark' ? 'light' : 'dark')))
+
+  useEffect(() => {
+    if (themeProp) return
+    window.localStorage.setItem(THEME_KEY, localTheme)
+  }, [localTheme, themeProp])
+
+  useEffect(() => {
+    if (user) {
+      setResolvedUser(user)
+      return
+    }
+    let cancelled = false
+    fetch(USER_API, { credentials: 'include' })
+      .then((response) => response.json())
+      .then((body) => { if (!cancelled) setResolvedUser(body?.user || null) })
+      .catch(() => { if (!cancelled) setResolvedUser(null) })
+    return () => { cancelled = true }
+  }, [user])
 
   useEffect(() => {
     let stop = false
@@ -284,18 +294,10 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
         if (!response.ok) throw new Error(body?.error || `Request failed (${response.status})`)
         return body
       })
-      .then((body) => {
-        if (!stop) setStats(body)
-      })
-      .catch((err) => {
-        if (!stop) setError(err?.message || 'Could not load RegFunnelOps data.')
-      })
-      .finally(() => {
-        if (!stop) setLoading(false)
-      })
-    return () => {
-      stop = true
-    }
+      .then((body) => { if (!stop) setStats(body) })
+      .catch((err) => { if (!stop) setError(err?.message || 'Could not load RegFunnelOps data.') })
+      .finally(() => { if (!stop) setLoading(false) })
+    return () => { stop = true }
   }, [days])
 
   const data = stats || {}
@@ -311,30 +313,17 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
   const currentByStep = (data.currentByStep || []).filter(matches)
   const convertedByStep = (data.convertedByStep || []).filter(matches)
   const filteredAbStats = (data.abStats || []).filter(
-    (row) =>
-      (region === 'All' || row.funnel_region === region) && (app === 'All' || row.os_app === app),
+    (row) => (region === 'All' || row.funnel_region === region) && (app === 'All' || row.os_app === app),
   )
   const filteredStages = (data.funnelStages || []).filter(matches)
 
   const enrolled = sum(states, 'n')
   const previousEnrolled = sum(previousStates, 'n')
   const stateCounts = Object.fromEntries(
-    STATES.map((state) => [
-      state,
-      sum(
-        states.filter((row) => row.state === state),
-        'n',
-      ),
-    ]),
+    STATES.map((state) => [state, sum(states.filter((row) => row.state === state), 'n')]),
   )
   const previousCounts = Object.fromEntries(
-    STATES.map((state) => [
-      state,
-      sum(
-        previousStates.filter((row) => row.state === state),
-        'n',
-      ),
-    ]),
+    STATES.map((state) => [state, sum(previousStates.filter((row) => row.state === state), 'n')]),
   )
   const sent = sum(engagement, 'sent')
   const delivered = sum(engagement, 'delivered')
@@ -342,6 +331,7 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
   const sendErrors = sum(engagement, 'errors')
   const unsubscribed = sum(engagement, 'unsubscribed')
   const totalAttempts = sent + noRecipient + sendErrors
+  const hasDeliveryEvents = delivered > 0
 
   const trend = useMemo(() => {
     const map = new Map()
@@ -354,8 +344,9 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
         completed: 0,
         excluded: 0,
       }
-      for (const key of ['enrolled', 'in_progress', 'converted', 'completed', 'excluded'])
+      for (const key of ['enrolled', 'in_progress', 'converted', 'completed', 'excluded']) {
         item[key] += Number(row[key] || 0)
+      }
       map.set(row.day, item)
     }
     return [...map.values()].sort((a, b) => a.day.localeCompare(b.day))
@@ -363,8 +354,9 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
 
   const currentStepMap = useMemo(() => {
     const map = new Map()
-    for (const row of currentByStep)
+    for (const row of currentByStep) {
       map.set(row.step_id, (map.get(row.step_id) || 0) + Number(row.n || 0))
+    }
     return map
   }, [currentByStep])
 
@@ -396,18 +388,19 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
     value: stageTotals[key],
     rate: enrolled ? (stageTotals[key] / enrolled) * 100 : 0,
   }))
+  const furthestReached = stages.reduce((last, stage, index) => (stage.value > 0 ? index : last), -1)
 
   const sendHealth = [
-    { name: 'Sent', value: sent, tone: '#31e6b5' },
-    { name: 'No recipient', value: noRecipient, tone: '#3ab8ff' },
-    { name: 'Errors', value: sendErrors, tone: '#ff5f73' },
-    { name: 'Unsubscribed', value: unsubscribed, tone: '#a778ff' },
+    { name: 'Sent', value: sent, tone: '#27c995' },
+    { name: 'No recipient', value: noRecipient, tone: '#2d9ed0' },
+    { name: 'Errors', value: sendErrors, tone: '#dc4d61' },
+    { name: 'Unsubscribed', value: unsubscribed, tone: '#8a65d3' },
   ]
 
   const abRows = ['A', 'B']
-    .filter((v) => variant === 'All' || variant === v)
-    .map((v) => {
-      const rows = filteredAbStats.filter((row) => row.variant === v)
+    .filter((value) => variant === 'All' || variant === value)
+    .map((value) => {
+      const rows = filteredAbStats.filter((row) => row.variant === value)
       const n = sum(rows, 'enrolled')
       const converted = sum(rows, 'converted')
       const completed = sum(rows, 'completed')
@@ -417,7 +410,7 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
       )
       const avgHours = converted ? weightedHoursNumerator / converted : null
       return {
-        variant: v,
+        variant: value,
         enrolled: n,
         converted,
         completed,
@@ -429,15 +422,21 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
   const aRow = abRows.find((row) => row.variant === 'A')
   const bRow = abRows.find((row) => row.variant === 'B')
   const metricValue = (row) =>
-    abMetric === 'completion'
-      ? row.completionRate
-      : abMetric === 'time'
-        ? row.avgHours
-        : row.conversionRate
+    abMetric === 'completion' ? row.completionRate : abMetric === 'time' ? row.avgHours : row.conversionRate
   const aMetric = aRow ? metricValue(aRow) : null
   const bMetric = bRow ? metricValue(bRow) : null
+
+  const aPopulations = new Set(
+    filteredAbStats.filter((row) => row.variant === 'A' && Number(row.enrolled || 0) > 0)
+      .map((row) => `${row.funnel_region}:${row.os_app}`),
+  )
+  const bPopulations = new Set(
+    filteredAbStats.filter((row) => row.variant === 'B' && Number(row.enrolled || 0) > 0)
+      .map((row) => `${row.funnel_region}:${row.os_app}`),
+  )
+  const abComparable = [...aPopulations].some((population) => bPopulations.has(population))
   const lift =
-    aMetric && bMetric != null
+    abComparable && aMetric && bMetric != null
       ? abMetric === 'time'
         ? ((aMetric - bMetric) / aMetric) * 100
         : ((bMetric - aMetric) / aMetric) * 100
@@ -459,8 +458,9 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
 
   const conversionByStep = useMemo(() => {
     const map = new Map()
-    for (const row of convertedByStep)
+    for (const row of convertedByStep) {
       map.set(row.step_id, (map.get(row.step_id) || 0) + Number(row.n || 0))
+    }
     return [...map.entries()].map(([step, value]) => ({ step: shortStep(step), value }))
   }, [convertedByStep])
 
@@ -478,30 +478,33 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
         row.state,
         row.os_app,
         row.funnel_region,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
+      ].filter(Boolean).join(' ').toLowerCase()
       if (!haystack.includes(q)) return false
     }
     return true
   })
+
   const sortedRecent = [...recent].sort((a, b) => {
-    const av = sortValue(a, sortKey),
-      bv = sortValue(b, sortKey)
+    const av = sortValue(a, sortKey)
+    const bv = sortValue(b, sortKey)
     if (av === bv) return 0
     const result = av > bv ? 1 : -1
     return sortDir === 'asc' ? result : -result
   })
   const visibleRecent = sortedRecent.slice(0, 8)
-
-  const legacySteps = engagement.filter(
-    (row) => !(sequences[row.funnel_region] || []).includes(row.step_id),
-  )
+  const legacySteps = engagement.filter((row) => !(sequences[row.funnel_region] || []).includes(row.step_id))
   const alerts = sendErrors + noRecipient + legacySteps.length
   const currentMetricValue = trendMetric === 'enrolled' ? enrolled : stateCounts[trendMetric] || 0
-  const previousMetricValue =
-    trendMetric === 'enrolled' ? previousEnrolled : previousCounts[trendMetric] || 0
+  const previousMetricValue = trendMetric === 'enrolled' ? previousEnrolled : previousCounts[trendMetric] || 0
+
+  const displayName = resolvedUser?.name || resolvedUser?.username || 'Signed in'
+  const displayRole = resolvedUser?.superAdmin
+    ? 'Super Admin'
+    : [resolvedUser?.department, resolvedUser?.level].filter(Boolean).map(titleCase).join(' · ') || 'User'
+
+  const chartTheme = theme === 'light'
+    ? { grid: 'rgba(18,55,75,.10)', tick: '#5a7280', tooltipBg: '#ffffff', tooltipBorder: '#c9d8df', tooltipText: '#102731' }
+    : { grid: 'rgba(255,255,255,.08)', tick: '#9ab0bf', tooltipBg: '#0b2035', tooltipBorder: '#27485e', tooltipText: '#eef8ff' }
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
@@ -512,18 +515,7 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
   }
 
   const exportCsv = () => {
-    const headers = [
-      'External ID',
-      'Country',
-      'Culture',
-      'Region',
-      'App',
-      'Variant',
-      'State',
-      'Current Step',
-      'Next Send',
-      'Enrolled At',
-    ]
+    const headers = ['External ID', 'Country', 'Culture', 'Region', 'App', 'Variant', 'State', 'Current Step', 'Next Send', 'Enrolled At']
     const rows = sortedRecent.map((row) => [
       row.external_id,
       row.country,
@@ -552,55 +544,25 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
   if (error) return <div className={styles.errorBox}>RegFunnelOps could not load: {error}</div>
 
   return (
-    <div className={styles.shell}>
+    <div className={styles.shell} data-theme={theme}>
       <aside className={styles.sidebar}>
+        <div className={styles.sidebarGlow} aria-hidden="true" />
         <div className={styles.brand}>
           <div className={styles.brandMark}>RF</div>
-          <div>
-            <strong>RegFunnelOps</strong>
-            <small>Marketing Operations</small>
-          </div>
+          <div><strong>RegFunnelOps</strong><small>Marketing Operations</small></div>
         </div>
-        <nav className={styles.nav}>
-          <NavItem
-            href="#overview"
-            icon="home"
-            label="Overview"
-            sub="Key metrics & insights"
-            active
-          />
-          <NavItem
-            href="#enrollments"
-            icon="users"
-            label="Enrollments"
-            sub="People in your funnel"
-          />
-          <NavItem
-            href="#journey"
-            icon="journey"
-            label="Journey"
-            sub="Funnel stages & email steps"
-          />
+
+        <nav className={styles.nav} aria-label="RegFunnelOps navigation">
+          <NavItem href="#overview" icon="home" label="Overview" sub="Key metrics & insights" active />
+          <NavItem href="#enrollments" icon="users" label="Enrollments" sub="People in your funnel" />
+          <NavItem href="#journey" icon="journey" label="Journey" sub="Funnel stages & email steps" />
           <NavItem href="#ab" icon="flask" label="A/B Tests" sub="Experiment results" />
-          <NavItem
-            href="#send-health"
-            icon="mail"
-            label="Sends & Errors"
-            sub="Delivery and issues"
-          />
-          <NavItem
-            href="/?app=analytics"
-            icon="report"
-            label="Reports"
-            sub="Open Marketing Analytics"
-          />
+          <NavItem href="#send-health" icon="mail" label="Sends & Errors" sub="Delivery and issues" />
+          <NavItem href="/?app=analytics" icon="report" label="Reports" sub="Open Marketing Analytics" />
         </nav>
+
         <div className={styles.sidebarQuote}>
-          <strong>
-            Smarter Journeys.
-            <br />
-            Higher Impact.
-          </strong>
+          <strong>Smarter Journeys.<br />Higher Impact.</strong>
           <span>Automate. Learn. Convert.</span>
         </div>
       </aside>
@@ -608,128 +570,65 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
       <main className={styles.main} id="overview">
         <div className={styles.topbar}>
           <label className={styles.search}>
-            <Icon type="search" size={16} />
+            <Icon type="search" size={17} />
             <input
+              aria-label="Search recent enrollments"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search users, enrollments or steps…"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search recent enrollments…"
             />
           </label>
+
           <div className={styles.topFilters}>
-            <label className={styles.dateSelect}>
-              <Icon type="calendar" size={15} />
-              <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
-                {RANGES.map((v) => (
-                  <option key={v} value={v}>
-                    Last {v} days
-                  </option>
-                ))}
-              </select>
-            </label>
-            <select value={app} onChange={(e) => setApp(e.target.value)}>
-              <option value="All">All Apps</option>
-              <option value="global">Global</option>
-              <option value="china">China</option>
-            </select>
-            <select value={region} onChange={(e) => setRegion(e.target.value)}>
-              <option value="All">All Regions</option>
-              <option value="ROW">ROW</option>
-              <option value="CNJP">CN / JP</option>
-            </select>
-            <select value={variant} onChange={(e) => setVariant(e.target.value)}>
-              <option value="All">All Variants</option>
-              <option value="A">Variant A</option>
-              <option value="B">Variant B</option>
-            </select>
+            <FilterSelect label="Date range" icon="calendar" value={days} onChange={(event) => setDays(Number(event.target.value))}>
+              {RANGES.map((value) => <option key={value} value={value}>Last {value} days</option>)}
+            </FilterSelect>
+            <FilterSelect label="OneSignal app" value={app} onChange={(event) => setApp(event.target.value)}>
+              <option value="All">All Apps</option><option value="global">Global</option><option value="china">China</option>
+            </FilterSelect>
+            <FilterSelect label="Funnel region" value={region} onChange={(event) => setRegion(event.target.value)}>
+              <option value="All">All Regions</option><option value="ROW">ROW</option><option value="CNJP">CN / JP</option>
+            </FilterSelect>
+            <FilterSelect label="A/B variant" value={variant} onChange={(event) => setVariant(event.target.value)}>
+              <option value="All">All Variants</option><option value="A">Variant A</option><option value="B">Variant B</option>
+            </FilterSelect>
+
             <button
-              className={styles.alertBtn}
-              title={
-                alerts
-                  ? `${alerts} operational signal(s) need review`
-                  : 'No current send or sequence alerts'
-              }
+              type="button"
+              className={styles.iconButton}
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             >
-              <Icon type="bell" size={17} />
-              {alerts > 0 && <i />}
+              <Icon type={theme === 'dark' ? 'sun' : 'moon'} size={18} />
             </button>
-            <div className={styles.userBox}>
-              <div className={styles.avatar}>
-                {String(user?.name || user?.username || 'M')
-                  .charAt(0)
-                  .toUpperCase()}
-              </div>
-              <div>
-                <strong>{user?.name || user?.username || 'Marketing Ops'}</strong>
-                <small>Marketing Ops</small>
-              </div>
+
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label={alerts ? `${alerts} operational signals need review` : 'No current operational alerts'}
+              title={alerts ? `${alerts} operational signal(s) need review` : 'No current send or sequence alerts'}
+            >
+              <Icon type="bell" size={18} />
+              {alerts > 0 && <i className={styles.alertDot} />}
+            </button>
+
+            <div className={styles.userBox} title={`${displayName} · ${displayRole}`}>
+              <div className={styles.avatar}>{displayName.charAt(0).toUpperCase()}</div>
+              <div><strong>{displayName}</strong><small>{displayRole}</small></div>
             </div>
-            {onBack && (
-              <button className={styles.appsBtn} onClick={onBack}>
-                Apps
-              </button>
-            )}
-            {onLogout && (
-              <button className={styles.logoutBtn} onClick={onLogout} title="Sign out">
-                ↗
-              </button>
-            )}
+
+            {onBack && <button type="button" className={styles.appsBtn} onClick={onBack}>Apps</button>}
+            {onLogout && <button type="button" className={styles.logoutBtn} onClick={onLogout} title="Sign out" aria-label="Sign out">↗</button>}
           </div>
         </div>
 
-        <header className={styles.hero}>
-          <div>
-            <h1>RegFunnelOps</h1>
-            <p>Monitor. Optimize. Move people forward.</p>
-          </div>
-          <span>LESS FRICTION. MORE PEOPLE FORWARD.</span>
-        </header>
-
-        <section className={styles.kpiGrid}>
-          <Kpi
-            label="Enrolled"
-            value={enrolled}
-            previous={previousEnrolled}
-            tone="cyan"
-            icon="◎"
-            sparkData={trend}
-            sparkKey="enrolled"
-          />
-          <Kpi
-            label="In Progress"
-            value={stateCounts.in_progress}
-            previous={previousCounts.in_progress}
-            tone="blue"
-            icon="▶"
-            sparkData={trend}
-            sparkKey="in_progress"
-          />
-          <Kpi
-            label="Converted"
-            value={stateCounts.converted}
-            previous={previousCounts.converted}
-            tone="green"
-            icon="▥"
-            sparkData={trend}
-            sparkKey="converted"
-          />
-          <Kpi
-            label="Completed"
-            value={stateCounts.completed}
-            previous={previousCounts.completed}
-            tone="teal"
-            icon="✓"
-            sparkData={trend}
-            sparkKey="completed"
-          />
-          <Kpi
-            label="Excluded"
-            value={stateCounts.excluded}
-            previous={previousCounts.excluded}
-            tone="red"
-            icon="⊘"
-            sparkData={trend}
-            sparkKey="excluded"
-          />
+        <section className={styles.kpiGrid} aria-label="Funnel metrics">
+          <Kpi label="Enrolled" value={enrolled} previous={previousEnrolled} tone="cyan" icon="◎" sparkData={trend} sparkKey="enrolled" />
+          <Kpi label="In Progress" value={stateCounts.in_progress} previous={previousCounts.in_progress} tone="blue" icon="▶" sparkData={trend} sparkKey="in_progress" />
+          <Kpi label="Converted" value={stateCounts.converted} previous={previousCounts.converted} tone="green" icon="▥" sparkData={trend} sparkKey="converted" />
+          <Kpi label="Completed" value={stateCounts.completed} previous={previousCounts.completed} tone="teal" icon="✓" sparkData={trend} sparkKey="completed" />
+          <Kpi label="Excluded" value={stateCounts.excluded} previous={previousCounts.excluded} tone="red" icon="⊘" sparkData={trend} sparkKey="excluded" />
         </section>
 
         <section className={styles.topGrid}>
@@ -737,28 +636,22 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
             title="Funnel Journey"
             sub="High-level progression across the registration sequence"
             className={styles.journeyPanel}
-            action={
-              <button
-                className={styles.textAction}
-                onClick={() => setShowSequence((value) => !value)}
-              >
-                {showSequence ? 'Hide email steps' : 'View full journey'} →
-              </button>
-            }
+            action={<button type="button" className={styles.textAction} onClick={() => setShowSequence((value) => !value)}>{showSequence ? 'Hide email steps' : 'View full journey'} →</button>}
           >
             <div className={styles.stageFlow} id="journey">
-              {stages.map((stage, index) => (
-                <div
-                  className={`${styles.stage} ${index === 0 ? styles.stageActive : ''}`}
-                  key={stage.key}
-                >
-                  <span>{index + 1}</span>
-                  <strong>{stage.label}</strong>
-                  <b>{fmt(stage.value)}</b>
-                  <small>{stage.rate.toFixed(0)}%</small>
-                </div>
-              ))}
+              {stages.map((stage, index) => {
+                const stateClass = index < furthestReached ? styles.stageReached : index === furthestReached ? styles.stageCurrent : styles.stageFuture
+                return (
+                  <div className={`${styles.stage} ${stateClass}`} key={stage.key}>
+                    <span>{index + 1}</span>
+                    <strong>{stage.label}</strong>
+                    <b>{fmt(stage.value)}</b>
+                    <small>{stage.rate.toFixed(0)}%</small>
+                  </div>
+                )
+              })}
             </div>
+
             {showSequence && (
               <div className={styles.emailSequence}>
                 <div className={styles.sequenceHeader}>
@@ -776,57 +669,40 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
                 </div>
               </div>
             )}
-            <div className={styles.miniChart}>
-              {trend.length > 1 ? (
-                <ResponsiveContainer width="100%" height={96}>
-                  <BarChart data={trend.slice(-24)}>
-                    <Bar dataKey="enrolled" fill="#28d6b4" radius={[3, 3, 0, 0]} />
-                  </BarChart>
+
+            {trend.length > 1 ? (
+              <div className={styles.miniChart}>
+                <ResponsiveContainer width="100%" height={82}>
+                  <BarChart data={trend.slice(-24)}><Bar dataKey="enrolled" fill="#149db8" radius={[4, 4, 0, 0]} /></BarChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className={styles.chartEmpty}>
-                  More enrollment dates are needed to build a trend.
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className={styles.miniEmpty}>Trend will appear after another enrollment date.</div>
+            )}
           </Panel>
 
           <Panel
             title="Send Health"
             sub="Delivery and send outcomes"
             className={styles.sendPanel}
-            action={<span>{pct(delivered, sent)} delivered</span>}
+            action={<span>{sent === 0 ? 'No sends' : hasDeliveryEvents ? `${pct(delivered, sent)} delivered` : 'Delivery events unavailable'}</span>}
           >
             <div className={styles.sendHealth} id="send-health">
               <div className={styles.donut}>
                 <ResponsiveContainer width="100%" height={180}>
                   <PieChart>
-                    <Pie
-                      data={sendHealth}
-                      dataKey="value"
-                      innerRadius={55}
-                      outerRadius={76}
-                      paddingAngle={2}
-                    >
-                      {sendHealth.map((item) => (
-                        <Cell key={item.name} fill={item.tone} />
-                      ))}
+                    <Pie data={sendHealth} dataKey="value" innerRadius={56} outerRadius={76} paddingAngle={2}>
+                      {sendHealth.map((item) => <Cell key={item.name} fill={item.tone} />)}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
-                <div className={styles.donutCenter}>
-                  <strong>{fmt(totalAttempts)}</strong>
-                  <span>Total attempts</span>
-                </div>
+                <div className={styles.donutCenter}><strong>{fmt(totalAttempts)}</strong><span>Total attempts</span></div>
               </div>
               <div className={styles.legend}>
                 {sendHealth.map((item) => (
                   <div key={item.name}>
                     <i style={{ background: item.tone }} />
-                    <span>
-                      {item.name}
-                      <small>{pct(item.value, totalAttempts)}</small>
-                    </span>
+                    <span>{item.name}<small>{pct(item.value, totalAttempts)}</small></span>
                     <strong>{fmt(item.value)}</strong>
                   </div>
                 ))}
@@ -835,85 +711,46 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
             <div className={`${styles.healthNote} ${sendErrors > 0 ? styles.healthWarn : ''}`}>
               {sendErrors > 0
                 ? `${sendErrors} send error(s) need review.`
-                : sent > 0 && delivered === 0
-                  ? 'Sends are healthy. Delivery events are not recorded yet.'
+                : sent > 0 && !hasDeliveryEvents
+                  ? 'Send attempts look healthy. Delivery events are not being recorded yet.'
                   : 'Send health is stable.'}
             </div>
           </Panel>
 
-          <Panel
-            title="A/B Test Performance"
-            sub="Real sequence-level outcomes"
-            className={styles.abPanel}
-          >
-            <div className={styles.metricTabs} id="ab">
-              <button
-                className={abMetric === 'conversion' ? styles.tabActive : ''}
-                onClick={() => setAbMetric('conversion')}
-              >
-                Conversion Rate
-              </button>
-              <button
-                className={abMetric === 'completion' ? styles.tabActive : ''}
-                onClick={() => setAbMetric('completion')}
-              >
-                Completion Rate
-              </button>
-              <button
-                className={abMetric === 'time' ? styles.tabActive : ''}
-                onClick={() => setAbMetric('time')}
-              >
-                Time to Convert
-              </button>
+          <Panel title="A/B Test Performance" sub="Real sequence-level outcomes" className={styles.abPanel}>
+            <div className={styles.metricTabs} id="ab" role="tablist" aria-label="A/B performance metric">
+              <button type="button" role="tab" aria-selected={abMetric === 'conversion'} className={abMetric === 'conversion' ? styles.tabActive : ''} onClick={() => setAbMetric('conversion')}>Conversion Rate</button>
+              <button type="button" role="tab" aria-selected={abMetric === 'completion'} className={abMetric === 'completion' ? styles.tabActive : ''} onClick={() => setAbMetric('completion')}>Completion Rate</button>
+              <button type="button" role="tab" aria-selected={abMetric === 'time'} className={abMetric === 'time' ? styles.tabActive : ''} onClick={() => setAbMetric('time')}>Time to Convert</button>
             </div>
+
             <div className={styles.abList}>
               {abRows.map((row) => {
                 const value = metricValue(row)
                 const width = abMetric === 'time' ? 0 : Math.min(100, Number(value || 0))
                 return (
                   <div className={styles.abRow} key={row.variant}>
-                    <div
-                      className={`${styles.variantBadge} ${row.variant === 'B' ? styles.variantB : ''}`}
-                    >
-                      {row.variant}
-                    </div>
+                    <div className={`${styles.variantBadge} ${row.variant === 'B' ? styles.variantB : ''}`}>{row.variant}</div>
                     <div className={styles.abBody}>
-                      <div>
-                        <strong>Variant {row.variant}</strong>
-                        <span>{row.variant === 'A' ? 'Current (Control)' : 'Challenger'}</span>
-                      </div>
-                      {abMetric !== 'time' && (
-                        <div className={styles.progress}>
-                          <i style={{ width: `${width}%` }} />
-                        </div>
-                      )}
-                      <small>
-                        {abMetric === 'time'
-                          ? `${fmt(row.converted)} converted`
-                          : `${fmt(abMetric === 'completion' ? row.completed : row.converted)} / ${fmt(row.enrolled)}`}
-                      </small>
+                      <div><strong>Variant {row.variant}</strong><span>{row.variant === 'A' ? 'Current (Control)' : 'Challenger'}</span></div>
+                      {abMetric !== 'time' && <div className={styles.progress}><i style={{ width: `${width}%` }} /></div>}
+                      <small>{abMetric === 'time' ? `${fmt(row.converted)} converted` : `${fmt(abMetric === 'completion' ? row.completed : row.converted)} / ${fmt(row.enrolled)}`}</small>
                     </div>
-                    <strong>
-                      {abMetric === 'time'
-                        ? hoursLabel(value)
-                        : `${Number(value || 0).toFixed(1)}%`}
-                    </strong>
-                    {row.variant === 'B' && lift != null && (
-                      <em className={lift >= 0 ? styles.liftGood : styles.liftBad}>
-                        {lift >= 0 ? '+' : ''}
-                        {lift.toFixed(1)}%
-                      </em>
-                    )}
+                    <strong>{abMetric === 'time' ? hoursLabel(value) : `${Number(value || 0).toFixed(1)}%`}</strong>
+                    {row.variant === 'B' && lift != null && <em className={lift >= 0 ? styles.liftGood : styles.liftBad}>{lift >= 0 ? '+' : ''}{lift.toFixed(1)}%</em>}
                   </div>
                 )
               })}
             </div>
-            <div className={styles.abFoot}>
-              {abRows.reduce((t, r) => t + r.enrolled, 0) < 30
-                ? 'Sample is still too small for a reliable winner.'
-                : lift == null
-                  ? 'Both variants need measurable results before lift can be calculated.'
-                  : `Variant B ${lift >= 0 ? 'is ahead' : 'is behind'} by ${Math.abs(lift).toFixed(1)}% on this metric.`}
+
+            <div className={`${styles.abFoot} ${!abComparable && aRow?.enrolled && bRow?.enrolled ? styles.abWarning : ''}`}>
+              {!abComparable && aRow?.enrolled && bRow?.enrolled
+                ? 'Variants currently come from different app / region populations. Do not infer a winner from this aggregate view.'
+                : abRows.reduce((total, row) => total + row.enrolled, 0) < 30
+                  ? 'Sample is still too small for a reliable winner.'
+                  : lift == null
+                    ? 'Both variants need measurable results before lift can be calculated.'
+                    : `Variant B ${lift >= 0 ? 'is ahead' : 'is behind'} by ${Math.abs(lift).toFixed(1)}% on this metric.`}
             </div>
           </Panel>
         </section>
@@ -922,23 +759,13 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
           <Panel
             title="Performance Over Time"
             sub="Filtered enrollment cohort trend"
-            className={styles.performancePanel}
+            className={`${styles.performancePanel} ${trend.length < 2 ? styles.performancePanelEmpty : ''}`}
             action={
               <div className={styles.performanceAction}>
-                <select value={trendMetric} onChange={(e) => setTrendMetric(e.target.value)}>
-                  <option value="enrolled">Enrollments</option>
-                  <option value="converted">Conversions</option>
-                  <option value="completed">Completions</option>
-                  <option value="excluded">Exclusions</option>
-                </select>
-                <span
-                  className={
-                    delta(currentMetricValue, previousMetricValue) != null &&
-                    delta(currentMetricValue, previousMetricValue) < 0
-                      ? styles.deltaDown
-                      : styles.deltaUp
-                  }
-                >
+                <FilterSelect label="Performance metric" value={trendMetric} onChange={(event) => setTrendMetric(event.target.value)}>
+                  <option value="enrolled">Enrollments</option><option value="converted">Conversions</option><option value="completed">Completions</option><option value="excluded">Exclusions</option>
+                </FilterSelect>
+                <span className={delta(currentMetricValue, previousMetricValue) != null && delta(currentMetricValue, previousMetricValue) < 0 ? styles.deltaDown : styles.deltaUp}>
                   {deltaLabel(delta(currentMetricValue, previousMetricValue))}
                 </span>
               </div>
@@ -947,121 +774,42 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
             {trend.length > 1 ? (
               <ResponsiveContainer width="100%" height={235}>
                 <LineChart data={trend}>
-                  <defs>
-                    <linearGradient id="rfLineFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#2bc8ff" stopOpacity=".35" />
-                      <stop offset="100%" stopColor="#2bc8ff" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} />
-                  <XAxis dataKey="day" tick={{ fill: '#718ba1', fontSize: 10 }} minTickGap={26} />
-                  <YAxis tick={{ fill: '#718ba1', fontSize: 10 }} width={34} />
-                  <Tooltip
-                    contentStyle={{
-                      background: '#0b2035',
-                      border: '1px solid #1c3b56',
-                      borderRadius: 10,
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey={trendMetric}
-                    stroke="#29c9ff"
-                    strokeWidth={2.4}
-                    dot={{ r: 2, fill: '#29c9ff' }}
-                    activeDot={{ r: 4 }}
-                  />
+                  <CartesianGrid stroke={chartTheme.grid} vertical={false} />
+                  <XAxis dataKey="day" tick={{ fill: chartTheme.tick, fontSize: 11 }} minTickGap={26} />
+                  <YAxis tick={{ fill: chartTheme.tick, fontSize: 11 }} width={38} />
+                  <Tooltip contentStyle={{ background: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: 10, color: chartTheme.tooltipText }} />
+                  <Line type="monotone" dataKey={trendMetric} stroke="#1188b5" strokeWidth={2.6} dot={{ r: 2, fill: '#1188b5' }} activeDot={{ r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
               <div className={styles.chartEmptyLarge}>
                 <strong>Trend not available yet</strong>
-                <span>
-                  Your test cohort has only one enrollment date. This chart will populate
-                  automatically as new users enroll.
-                </span>
+                <span>At least two enrollment dates are needed. This will populate automatically as new users enroll.</span>
               </div>
             )}
           </Panel>
 
-          <Panel
-            title="Top Insights"
-            sub="Live operational signals"
-            className={styles.insightsPanel}
-          >
+          <Panel title="Top Insights" sub="Live operational signals" className={styles.insightsPanel}>
             <div className={styles.insights}>
-              <div>
-                <i className={styles.good}>↗</i>
-                <span>
-                  <strong>Conversion rate</strong>
-                  <small>
-                    {pct(stateCounts.converted, enrolled)} of the selected cohort has converted.
-                  </small>
-                </span>
-                <em>Live</em>
-              </div>
-              <div>
-                <i className={sendErrors ? styles.bad : styles.good}>!</i>
-                <span>
-                  <strong>Send errors</strong>
-                  <small>
-                    {sendErrors
-                      ? `${sendErrors} error(s) recorded in SendLog.`
-                      : 'No send errors in this cohort.'}
-                  </small>
-                </span>
-                <em>Live</em>
-              </div>
-              <div>
-                <i className={sent > 0 && delivered === 0 ? styles.bad : styles.info}>i</i>
-                <span>
-                  <strong>Delivery tracking</strong>
-                  <small>
-                    {sent > 0 && delivered === 0
-                      ? 'Emails were sent, but delivery events have not been captured yet.'
-                      : `${fmt(delivered)} delivered event(s) recorded.`}
-                  </small>
-                </span>
-                <em>Live</em>
-              </div>
-              <div>
-                <i className={legacySteps.length ? styles.bad : styles.info}>✓</i>
-                <span>
-                  <strong>Sequence integrity</strong>
-                  <small>
-                    {legacySteps.length
-                      ? `${legacySteps.length} legacy step row(s) detected.`
-                      : 'All engagement rows match the live sequences.'}
-                  </small>
-                </span>
-                <em>Live</em>
-              </div>
+              <div><i className={styles.good}>↗</i><span><strong>Conversion rate</strong><small>{pct(stateCounts.converted, enrolled)} of the selected cohort has converted.</small></span><em>Live</em></div>
+              <div><i className={sendErrors ? styles.bad : styles.good}>!</i><span><strong>Send errors</strong><small>{sendErrors ? `${sendErrors} error(s) recorded in SendLog.` : 'No send errors in this cohort.'}</small></span><em>Live</em></div>
+              <div><i className={sent > 0 && !hasDeliveryEvents ? styles.warn : styles.info}>i</i><span><strong>Delivery tracking</strong><small>{sent > 0 && !hasDeliveryEvents ? 'Emails were sent, but delivery events have not been captured yet.' : `${fmt(delivered)} delivered event(s) recorded.`}</small></span><em>Live</em></div>
+              <div><i className={legacySteps.length ? styles.bad : styles.info}>✓</i><span><strong>Sequence integrity</strong><small>{legacySteps.length ? `${legacySteps.length} legacy step row(s) detected.` : 'All engagement rows match the live sequences.'}</small></span><em>Live</em></div>
             </div>
           </Panel>
 
-          <Panel
-            title="Regional Performance"
-            sub="Conversion rate by country"
-            className={styles.regionPanel}
-            action={<span>Conversions</span>}
-          >
+          <Panel title="Regional Performance" sub="Enrollment and conversion by country" className={styles.regionPanel}>
             <div className={styles.regionList}>
-              {countryRows.length ? (
-                countryRows.map((row) => (
-                  <div key={row.country}>
-                    <span>
-                      <b>{FLAG[row.country] || '🌐'}</b>
-                      {row.country}
-                    </span>
-                    <div className={styles.regionBar}>
-                      <i style={{ width: `${Math.min(100, row.rate)}%` }} />
-                    </div>
-                    <strong>{row.rate.toFixed(1)}%</strong>
+              {countryRows.length ? countryRows.map((row) => (
+                <div className={styles.regionRow} key={row.country}>
+                  <div className={styles.regionIdentity}>
+                    <CountryFlag country={row.country} />
+                    <span><strong>{row.country}</strong><small>{fmt(row.total)} enrolled · {fmt(row.converted)} converted</small></span>
                   </div>
-                ))
-              ) : (
-                <div className={styles.noCountry}>No country data in this cohort.</div>
-              )}
+                  <div className={styles.regionBar}><i style={{ width: `${Math.min(100, row.rate)}%` }} /></div>
+                  <strong className={styles.regionRate}>{row.rate.toFixed(1)}%</strong>
+                </div>
+              )) : <div className={styles.noCountry}>No country data in this cohort.</div>}
             </div>
           </Panel>
         </section>
@@ -1070,22 +818,11 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
           <Panel title="Conversions by Step" sub="Last email sent before conversion">
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={conversionByStep} layout="vertical">
-                <CartesianGrid stroke="rgba(255,255,255,.05)" horizontal={false} />
-                <XAxis type="number" tick={{ fill: '#758da6', fontSize: 10 }} />
-                <YAxis
-                  type="category"
-                  dataKey="step"
-                  width={150}
-                  tick={{ fill: '#9bb0c3', fontSize: 10 }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: '#0b2035',
-                    border: '1px solid #1c3b56',
-                    borderRadius: 10,
-                  }}
-                />
-                <Bar dataKey="value" fill="#31e6b5" radius={[0, 4, 4, 0]} />
+                <CartesianGrid stroke={chartTheme.grid} horizontal={false} />
+                <XAxis type="number" tick={{ fill: chartTheme.tick, fontSize: 11 }} />
+                <YAxis type="category" dataKey="step" width={160} tick={{ fill: chartTheme.tick, fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: 10, color: chartTheme.tooltipText }} />
+                <Bar dataKey="value" fill="#1a9f73" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </Panel>
@@ -1097,9 +834,7 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
           className={styles.enrollmentPanel}
           action={
             <div className={styles.tableActions}>
-              <button onClick={exportCsv}>
-                <Icon type="export" size={14} /> Export
-              </button>
+              <button type="button" onClick={exportCsv}><Icon type="export" size={15} /> Export</button>
               <a href="/admin/collections/funnel-enrollment">View all enrollments →</a>
             </div>
           }
@@ -1119,62 +854,31 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
                     ['next_send_at', 'Next Send'],
                     ['enrolled_at', 'Enrolled At'],
                   ].map(([key, label]) => (
-                    <th key={key}>
-                      <button onClick={() => toggleSort(key)}>
-                        {label}
-                        <span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
-                      </button>
+                    <th key={key} aria-sort={sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                      <button type="button" onClick={() => toggleSort(key)}>{label}<span>{sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span></button>
                     </th>
                   ))}
-                  <th />
+                  <th><span className={styles.srOnly}>Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {!visibleRecent.length && (
-                  <tr>
-                    <td colSpan={10} className={styles.empty}>
-                      {search
-                        ? 'No recent enrollments match your search.'
-                        : 'No enrollments in this cohort.'}
-                    </td>
-                  </tr>
+                  <tr><td colSpan={10} className={styles.empty}>{search ? 'No recent enrollments match your search.' : 'No enrollments in this cohort.'}</td></tr>
                 )}
                 {visibleRecent.map((row) => (
                   <tr key={row.external_id}>
-                    <td>
-                      <strong>{row.external_id}</strong>
-                    </td>
-                    <td>
-                      <span className={styles.countryCell}>
-                        {FLAG[row.country] || '🌐'} {row.country || '—'}
-                      </span>
-                    </td>
+                    <td><strong>{row.external_id}</strong></td>
+                    <td><span className={styles.countryCell}><CountryFlag country={row.country} /> {row.country || '—'}</span></td>
                     <td>{row.funnel_region === 'CNJP' ? 'CN / JP' : row.funnel_region}</td>
                     <td>{APP_LABELS[row.os_app] || row.os_app}</td>
-                    <td>
-                      <b className={styles.variantText}>{row.variant}</b>
-                    </td>
-                    <td>
-                      <StatusPill state={row.state} />
-                    </td>
-                    <td title={row.current_step}>{shortStep(row.current_step)}</td>
-                    <td
-                      className={
-                        row.next_send_at && new Date(row.next_send_at) < new Date()
-                          ? styles.overdue
-                          : ''
-                      }
-                    >
-                      {relativeDue(row.next_send_at)}
-                    </td>
+                    <td><b className={styles.variantText}>{row.variant}</b></td>
+                    <td><StatusPill state={row.state} /></td>
+                    <td title={row.current_step}><span className={styles.stepPill}>{shortStep(row.current_step)}</span></td>
+                    <td className={row.next_send_at && new Date(row.next_send_at) < new Date() ? styles.overdue : ''}>{relativeDue(row.next_send_at)}</td>
                     <td>{dateTime(row.enrolled_at)}</td>
                     <td>
-                      <a
-                        className={styles.rowAction}
-                        href={`/admin/collections/funnel-enrollment/${row.id}`}
-                        title="Open enrollment"
-                      >
-                        •••
+                      <a className={styles.rowAction} href={`/admin/collections/funnel-enrollment/${row.id}`} title={`Open enrollment ${row.external_id}`} aria-label={`Open enrollment ${row.external_id}`}>
+                        <Icon type="open" size={15} />
                       </a>
                     </td>
                   </tr>
@@ -1182,19 +886,15 @@ export default function RegFunnelDashboard({ onBack, user, onLogout }) {
               </tbody>
             </table>
           </div>
+
           <div className={styles.tableFooter}>
-            <span>
-              Showing {visibleRecent.length} of {recent.length} loaded enrollments
-            </span>
-            {recent.length > visibleRecent.length && (
-              <a href="/admin/collections/funnel-enrollment">Open full enrollment list</a>
-            )}
+            <span>Showing {visibleRecent.length} of {recent.length} loaded enrollments</span>
+            {recent.length > visibleRecent.length && <a href="/admin/collections/funnel-enrollment">Open full enrollment list</a>}
           </div>
         </Panel>
 
         <footer className={styles.footer}>
-          Live RegFunnelOps data · cohort basis: {data.cohortBasis || 'enrolledAt'} · generated{' '}
-          {dateTime(data.generatedAt)}
+          Live RegFunnelOps data · cohort basis: {data.cohortBasis || 'enrolledAt'} · generated {dateTime(data.generatedAt)}
         </footer>
       </main>
     </div>
