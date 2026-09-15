@@ -30,42 +30,14 @@ const STATE_LABELS = {
   excluded: 'Excluded',
 }
 const COUNTRY_CODE = {
-  Cyprus: 'cy',
-  China: 'cn',
-  Japan: 'jp',
-  'United Kingdom': 'gb',
-  UK: 'gb',
-  Australia: 'au',
-  Germany: 'de',
-  France: 'fr',
-  Spain: 'es',
-  Italy: 'it',
-  Canada: 'ca',
-  USA: 'us',
-  'United States': 'us',
-  Brazil: 'br',
-  Portugal: 'pt',
-  Greece: 'gr',
-  Poland: 'pl',
-  Austria: 'at',
-  Switzerland: 'ch',
-  Netherlands: 'nl',
-  Sweden: 'se',
-  Norway: 'no',
-  Denmark: 'dk',
-  Finland: 'fi',
-  Ireland: 'ie',
-  'South Africa': 'za',
-  'United Arab Emirates': 'ae',
-  Singapore: 'sg',
-  Malaysia: 'my',
-  Thailand: 'th',
-  Indonesia: 'id',
-  Vietnam: 'vn',
-  Philippines: 'ph',
-  Mexico: 'mx',
-  Chile: 'cl',
-  Argentina: 'ar',
+  Cyprus: 'cy', China: 'cn', Japan: 'jp', 'United Kingdom': 'gb', UK: 'gb',
+  Australia: 'au', Germany: 'de', France: 'fr', Spain: 'es', Italy: 'it',
+  Canada: 'ca', USA: 'us', 'United States': 'us', Brazil: 'br', Portugal: 'pt',
+  Greece: 'gr', Poland: 'pl', Austria: 'at', Switzerland: 'ch', Netherlands: 'nl',
+  Sweden: 'se', Norway: 'no', Denmark: 'dk', Finland: 'fi', Ireland: 'ie',
+  'South Africa': 'za', 'United Arab Emirates': 'ae', Singapore: 'sg', Malaysia: 'my',
+  Thailand: 'th', Indonesia: 'id', Vietnam: 'vn', Philippines: 'ph', Mexico: 'mx',
+  Chile: 'cl', Argentina: 'ar',
 }
 
 const sum = (rows, key) => rows.reduce((total, row) => total + Number(row?.[key] || 0), 0)
@@ -103,9 +75,7 @@ const hoursLabel = (hours) => {
   return value < 24 ? `${value.toFixed(1)}h` : `${(value / 24).toFixed(1)}d`
 }
 const titleCase = (value) =>
-  String(value || '')
-    .replaceAll('_', ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase())
+  String(value || '').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 const initialTheme = () => {
   if (typeof window === 'undefined') return 'dark'
   const stored = window.localStorage.getItem(THEME_KEY)
@@ -202,10 +172,7 @@ function Kpi({ label, value, previous, tone, icon, sparkData, sparkKey }) {
     <article className={`${styles.kpi} ${styles[`kpi_${tone}`]} ${hasSpark ? styles.kpiWithSpark : ''}`}>
       <div className={styles.kpiMain}>
         <span className={styles.kpiIcon}>{icon}</span>
-        <div className={styles.kpiValue}>
-          <span>{label}</span>
-          <strong>{fmt(value)}</strong>
-        </div>
+        <div className={styles.kpiValue}><span>{label}</span><strong>{fmt(value)}</strong></div>
         {hasSpark && (
           <Sparkline
             data={sparkData}
@@ -427,11 +394,13 @@ export default function RegFunnelDashboard({
   const bMetric = bRow ? metricValue(bRow) : null
 
   const aPopulations = new Set(
-    filteredAbStats.filter((row) => row.variant === 'A' && Number(row.enrolled || 0) > 0)
+    filteredAbStats
+      .filter((row) => row.variant === 'A' && Number(row.enrolled || 0) > 0)
       .map((row) => `${row.funnel_region}:${row.os_app}`),
   )
   const bPopulations = new Set(
-    filteredAbStats.filter((row) => row.variant === 'B' && Number(row.enrolled || 0) > 0)
+    filteredAbStats
+      .filter((row) => row.variant === 'B' && Number(row.enrolled || 0) > 0)
       .map((row) => `${row.funnel_region}:${row.os_app}`),
   )
   const abComparable = [...aPopulations].some((population) => bPopulations.has(population))
@@ -459,10 +428,14 @@ export default function RegFunnelDashboard({
   const conversionByStep = useMemo(() => {
     const map = new Map()
     for (const row of convertedByStep) {
-      map.set(row.step_id, (map.get(row.step_id) || 0) + Number(row.n || 0))
+      const value = Number(row.n || 0)
+      if (value > 0) map.set(row.step_id, (map.get(row.step_id) || 0) + value)
     }
-    return [...map.entries()].map(([step, value]) => ({ step: shortStep(step), value }))
+    return [...map.entries()]
+      .map(([step, value]) => ({ step: shortStep(step), value }))
+      .sort((a, b) => b.value - a.value)
   }, [convertedByStep])
+  const conversionStepMax = Math.max(1, ...conversionByStep.map((row) => row.value))
 
   const recent = (data.recentEnrollments || []).filter((row) => {
     if (region !== 'All' && row.funnel_region !== region) return false
@@ -503,8 +476,8 @@ export default function RegFunnelDashboard({
     : [resolvedUser?.department, resolvedUser?.level].filter(Boolean).map(titleCase).join(' · ') || 'User'
 
   const chartTheme = theme === 'light'
-    ? { grid: 'rgba(18,55,75,.10)', tick: '#5a7280', tooltipBg: '#ffffff', tooltipBorder: '#c9d8df', tooltipText: '#102731' }
-    : { grid: 'rgba(255,255,255,.08)', tick: '#9ab0bf', tooltipBg: '#0b2035', tooltipBorder: '#27485e', tooltipText: '#eef8ff' }
+    ? { grid: 'rgba(18,55,75,.11)', tick: '#526b76', tooltipBg: '#ffffff', tooltipBorder: '#c5d2d8', tooltipText: '#102731' }
+    : { grid: 'rgba(255,255,255,.08)', tick: '#a2b5c1', tooltipBg: '#0b2035', tooltipBorder: '#27485e', tooltipText: '#eef8ff' }
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
@@ -815,16 +788,18 @@ export default function RegFunnelDashboard({
         </section>
 
         {conversionByStep.length > 0 && (
-          <Panel title="Conversions by Step" sub="Last email sent before conversion">
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={conversionByStep} layout="vertical">
-                <CartesianGrid stroke={chartTheme.grid} horizontal={false} />
-                <XAxis type="number" tick={{ fill: chartTheme.tick, fontSize: 11 }} />
-                <YAxis type="category" dataKey="step" width={160} tick={{ fill: chartTheme.tick, fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: 10, color: chartTheme.tooltipText }} />
-                <Bar dataKey="value" fill="#1a9f73" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <Panel title="Conversions by Step" sub="Last email sent before conversion" className={styles.conversionPanel}>
+            <div className={styles.conversionList} role="list" aria-label="Conversions by last email step">
+              {conversionByStep.map((row) => (
+                <div className={styles.conversionRow} role="listitem" key={row.step}>
+                  <span className={styles.conversionLabel} title={row.step}>{titleCase(row.step)}</span>
+                  <div className={styles.conversionTrack} aria-hidden="true">
+                    <i style={{ width: `${Math.max(8, (row.value / conversionStepMax) * 100)}%` }} />
+                  </div>
+                  <strong>{fmt(row.value)}</strong>
+                </div>
+              ))}
+            </div>
           </Panel>
         )}
 
