@@ -60,14 +60,48 @@ export const POST = async (req: Request) => {
 
   const eventType = mapMailgunEvent(ed)
   if (!eventType) {
-    return Response.json({ ok: true, ignored: ed?.event }, { status: 200 })
+    return Response.json({ ok: true, ignored: true, reason: 'untracked_event', event: ed?.event }, { status: 200 })
+  }
+
+  const uv = normalizeUserVariables(ed?.['user-variables'])
+  const appId: string | undefined = uv.app_id || uv.appId
+  const notificationId: string | undefined = uv.notification_id || uv.notificationId
+
+  // ms.easy-markets.com carries much more traffic than RegFunnelOps. Do not
+  // persist generic Mailgun traffic. A valid RegFunnel event must carry the
+  // OneSignal notification_id that was recorded by our Sender in SendLog.
+  if (!notificationId) {
+    return Response.json({
+      ok: true,
+      ignored: true,
+      reason: 'missing_notification_id',
+      eventType,
+    }, { status: 200 })
   }
 
   const payload = await getPayload({ config: configPromise })
-  const uv = normalizeUserVariables(ed?.['user-variables'])
+  const sendLog = await payload.find({
+    collection: 'send-log',
+    where: {
+      and: [
+        { notificationId: { equals: notificationId } },
+        { result: { equals: 'sent' } },
+      ],
+    },
+    limit: 1,
+    overrideAccess: true,
+  })
 
-  const appId: string | undefined = uv.app_id || uv.appId
-  const notificationId: string | undefined = uv.notification_id || uv.notificationId
+  const matchedSend = sendLog.docs[0]
+  if (!matchedSend) {
+    return Response.json({
+      ok: true,
+      ignored: true,
+      reason: 'unknown_notification_id',
+      eventType,
+    }, { status: 200 })
+  }
+
   const messageId: string | undefined = ed?.message?.headers?.['message-id']
   const recipient: string | undefined = ed?.recipient
   const region: string | undefined = uv.region
@@ -75,7 +109,8 @@ export const POST = async (req: Request) => {
   const timestamp = new Date((Number(tsSec) || Date.now() / 1000) * 1000).toISOString()
 
   // The RegFunnel identity bridge is notification_id -> SendLog.notificationId.
-  // Template resolution is secondary and safely degrades when app/template data is absent.
+  // Template resolution only happens after that bridge has been validated, so
+  // unrelated Mailgun traffic can never trigger lookups or writes downstream.
   const tpl = await resolveTemplate(payload, notificationId, appId)
 
   try {
@@ -98,13 +133,17 @@ export const POST = async (req: Request) => {
         reason: ed?.reason,
         geo: ed?.geolocation,
         client: ed?.['client-info'],
+        sendLogId: matchedSend.id,
+        externalId: matchedSend.externalId,
+        stepId: matchedSend.stepId,
+        osApp: matchedSend.osApp,
       },
     })
 
     return Response.json({
       ok: true,
       eventType,
-      linkedToNotification: Boolean(notificationId),
+      linkedToNotification: true,
       ...res,
     }, { status: 200 })
   } catch (e: any) {
