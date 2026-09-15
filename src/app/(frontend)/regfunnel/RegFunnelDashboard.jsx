@@ -663,8 +663,8 @@ export default function RegFunnelDashboard({
             </div>
           </Panel>
 
-          <Panel title="A/B Test Performance" sub="Real sequence-level outcomes" className={styles.abPanel}>
-            <div className={styles.metricTabs} id="ab" role="tablist" aria-label="A/B performance metric">
+          <Panel title="Variant Performance" sub="Real sequence-level outcomes" className={styles.abPanel}>
+            <div className={styles.metricTabs} id="ab" role="tablist" aria-label="Variant performance metric">
               <button type="button" role="tab" aria-selected={abMetric === 'conversion'} className={abMetric === 'conversion' ? styles.tabActive : ''} onClick={() => setAbMetric('conversion')}>Conversion Rate</button>
               <button type="button" role="tab" aria-selected={abMetric === 'completion'} className={abMetric === 'completion' ? styles.tabActive : ''} onClick={() => setAbMetric('completion')}>Completion Rate</button>
               <button type="button" role="tab" aria-selected={abMetric === 'time'} className={abMetric === 'time' ? styles.tabActive : ''} onClick={() => setAbMetric('time')}>Time to Convert</button>
@@ -758,7 +758,7 @@ export default function RegFunnelDashboard({
                   <div className={styles.conversionTrack} aria-hidden="true">
                     <i style={{ width: `${Math.max(8, (row.value / conversionStepMax) * 100)}%` }} />
                   </div>
-                  <strong>{fmt(row.value)}</strong>
+                  <strong>{fmt(row.value)} conversion{row.value === 1 ? '' : 's'}</strong>
                 </div>
               ))}
             </div>
