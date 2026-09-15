@@ -5,13 +5,13 @@ import { ingestEvent, APPS } from '@/lib/analytics/webhookUtils'
 /**
  * OneSignal push webhook (Event Streams / webhook).
  *
- * NOTE: we don't yet have a real OneSignal webhook payload sample, so this route
- * is defensive: it logs the raw body (so you can capture the real shape), then
- * makes a best-effort mapping. Once you send a real event and we see the payload,
- * we finalize the field mapping — exactly like we did with Mailgun.
+ * Email delivery/engagement events are intentionally sourced from Mailgun via
+ * /api/webhooks/mailgun because Mailgun is the actual email delivery provider.
+ * Keeping the sources separate avoids duplicate email events if OneSignal email
+ * Event Streams are enabled later.
  *
- * Security: OneSignal webhooks aren't HMAC-signed by default, so we require a
- * shared secret in the URL: /api/webhooks/onesignal?token=YOUR_SECRET
+ * Security: OneSignal webhooks are protected with the shared secret in the URL:
+ * /api/webhooks/onesignal?token=YOUR_SECRET
  */
 export const POST = async (req: Request) => {
   const url = new URL(req.url)
@@ -27,30 +27,28 @@ export const POST = async (req: Request) => {
     return Response.json({ error: 'invalid json' }, { status: 400 })
   }
 
-  // 🔍 Capture the real shape — check your server logs after the first real event.
-  console.log('[onesignal webhook] raw payload:', JSON.stringify(body).slice(0, 2000))
-
-  // Best-effort extraction (adjust once we see a real payload)
   const appId: string | undefined = body?.app_id || body?.appId
   const notificationId: string | undefined = body?.notification_id || body?.id
   const rawEvent: string | undefined = body?.event || body?.kind || body?.type
 
-  // Map OneSignal push events → our eventType (tentative)
   const map: Record<string, string> = {
     sent: 'accepted',
     'notification.sent': 'accepted',
+    'message.push.sent': 'accepted',
     delivered: 'delivered',
-    'notification.delivered': 'delivered',
     displayed: 'delivered',
+    'notification.delivered': 'delivered',
+    'message.push.received': 'delivered',
     clicked: 'clicked',
     'notification.clicked': 'clicked',
+    'message.push.clicked': 'clicked',
     failed: 'failed',
     'notification.failed': 'failed',
+    'message.push.failed': 'failed',
   }
   const eventType = rawEvent ? map[rawEvent] : undefined
 
   if (!eventType) {
-    // Unknown/unmapped — acknowledge so OneSignal doesn't retry, but record nothing.
     return Response.json({ ok: true, captured: true, unmappedEvent: rawEvent }, { status: 200 })
   }
 
@@ -66,7 +64,6 @@ export const POST = async (req: Request) => {
       recipient: body?.player_id || body?.subscription_id,
       messageId: notificationId ? `${notificationId}:${body?.player_id || ''}` : undefined,
       notificationId,
-      // push template resolution can reuse resolveTemplate later if needed
       templateKey: null,
       region: body?.region,
       timestamp: new Date((body?.timestamp ? Number(body.timestamp) * 1000 : Date.now())).toISOString(),
@@ -79,4 +76,4 @@ export const POST = async (req: Request) => {
   }
 }
 
-export const GET = async () => Response.json({ ok: true, route: 'onesignal webhook' })
+export const GET = async () => Response.json({ ok: true, route: 'onesignal push webhook' })
