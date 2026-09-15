@@ -66,9 +66,11 @@ https://example-random.trycloudflare.com/api/webhooks/mailgun
 
 A quick tunnel URL changes when the tunnel is restarted. For a permanent development endpoint, use a named Cloudflare Tunnel with a stable hostname.
 
-Mailgun supports up to 3 unique URLs per event type, so production and local development can be configured at the same time. Keep the production URL and add the active tunnel URL as a second URL while testing locally.
+Mailgun supports multiple webhook URLs per event type, so production and local development can be configured at the same time. Keep the production URL and add the active tunnel URL while testing locally.
 
 ## Configure in Mailgun
+
+Use a domain-level webhook on the actual Mailgun sending domain used by the OneSignal marketing flow.
 
 Configure the webhook URL(s) for:
 
@@ -93,6 +95,41 @@ URL 2: https://<current-local-tunnel>.trycloudflare.com/api/webhooks/mailgun
 ```
 
 Remove or replace URL 2 when the temporary tunnel expires.
+
+## RegFunnel-only filtering
+
+The Mailgun sending domain can carry traffic unrelated to RegFunnelOps. The webhook must therefore never persist every domain event blindly.
+
+A Mailgun event is accepted into RegFunnelOps only when both conditions are true:
+
+1. `event-data.user-variables.notification_id` exists.
+2. That `notification_id` matches a `SendLog.notificationId` row whose result is `sent`.
+
+Everything else returns HTTP 200 with `ignored: true` and is not written to the Events collection. This prevents normal marketing traffic on the same Mailgun domain from polluting RegFunnelOps analytics or triggering unnecessary template lookups.
+
+Typical ignored responses:
+
+```json
+{
+  "ok": true,
+  "ignored": true,
+  "reason": "missing_notification_id",
+  "eventType": "delivered"
+}
+```
+
+or:
+
+```json
+{
+  "ok": true,
+  "ignored": true,
+  "reason": "unknown_notification_id",
+  "eventType": "delivered"
+}
+```
+
+Mailgun's built-in webhook Test normally does not carry a real RegFunnel notification ID, so an ignored test response is expected after this filter is enabled. A real fresh RegFunnel send is required for end-to-end validation.
 
 ## Identity bridge
 
@@ -128,13 +165,14 @@ Do not add a development bypass that disables signature verification. Local traf
 1. Run Payload/Next locally with `MAILGUN_SIGNING_KEY` present.
 2. Verify `GET http://localhost:3000/api/webhooks/mailgun` returns `signingKeyConfigured: true`.
 3. Start the Cloudflare tunnel and add its HTTPS Mailgun webhook URL.
-4. Send a fresh RegFunnelOps test email through the normal Sender workflow.
-5. Confirm `SendLog` contains a non-empty `notificationId`.
-6. Wait for Mailgun `delivered`.
-7. Confirm the local `events` collection receives an event with the same `notificationId` and `eventType=delivered`.
-8. Refresh local RegFunnelOps.
-9. Confirm Send Health shows delivered data and the delivery-tracking warning disappears.
-10. Open `/regfunnel/enrollment/{id}` and confirm delivery/open/click events appear in the activity timeline.
+4. Use Mailgun Test and confirm the endpoint returns HTTP 200. An ignored `missing_notification_id` response is expected for the synthetic test payload.
+5. Send a fresh RegFunnelOps test email through the normal Sender workflow.
+6. Confirm `SendLog` contains a non-empty `notificationId`.
+7. Wait for Mailgun `delivered`.
+8. Confirm the local `events` collection receives an event with the same `notificationId` and `eventType=delivered`.
+9. Refresh local RegFunnelOps.
+10. Confirm Send Health shows delivered data and the delivery-tracking warning disappears.
+11. Open `/regfunnel/enrollment/{id}` and confirm delivery/open/click events appear in the activity timeline.
 
 ## Existing test data
 
