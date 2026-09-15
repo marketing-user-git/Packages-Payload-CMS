@@ -109,6 +109,9 @@ export async function GET(req: NextRequest) {
   const trend = rowsOf(await db.execute(sql`
     SELECT
       TO_CHAR(DATE_TRUNC('day', enrolled_at), 'YYYY-MM-DD') AS day,
+      funnel_region,
+      os_app,
+      variant,
       COUNT(*)::int AS enrolled,
       COUNT(*) FILTER (WHERE state = 'in_progress')::int AS in_progress,
       COUNT(*) FILTER (WHERE state = 'converted')::int AS converted,
@@ -116,8 +119,8 @@ export async function GET(req: NextRequest) {
       COUNT(*) FILTER (WHERE state = 'excluded')::int AS excluded
     FROM funnel_enrollment
     WHERE enrolled_at >= NOW() - make_interval(days => ${days})
-    GROUP BY DATE_TRUNC('day', enrolled_at)
-    ORDER BY DATE_TRUNC('day', enrolled_at)
+    GROUP BY DATE_TRUNC('day', enrolled_at), funnel_region, os_app, variant
+    ORDER BY DATE_TRUNC('day', enrolled_at), funnel_region, os_app, variant
   `))
 
   const countryPerformance = rowsOf(await db.execute(sql`
