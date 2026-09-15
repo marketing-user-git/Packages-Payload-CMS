@@ -7,14 +7,17 @@ const first = (...values: any[]) =>
 
 const eventMap: Record<string, string> = {
   // Current OneSignal Event Streams email events
+  'message.email.sent': 'accepted',
   'message.email.received': 'delivered',
   'message.email.opened': 'opened',
   'message.email.clicked': 'clicked',
   'message.email.unsubscribed': 'unsubscribed',
   'message.email.reported_as_spam': 'complained',
   'message.email.bounced': 'bounced_hard',
+  'message.email.hardbounced': 'bounced_hard',
   'message.email.failed': 'failed',
   'message.email.suppressed': 'failed',
+  'message.email.supressed': 'failed',
 
   // Push Event Streams / legacy webhook compatibility
   'message.push.sent': 'accepted',
@@ -159,8 +162,6 @@ export const POST = async (req: Request) => {
     let templateName = streamTemplateName || resolved.templateName
     const templateId = streamTemplateId || resolved.templateId
 
-    // Event Streams already gives us the template ID. Use it directly if the
-    // notification cache did not yet resolve a canonical template key.
     if (!templateKey && templateId && appCfg) {
       const mapping = await payload.find({
         collection: 'template-mappings',
