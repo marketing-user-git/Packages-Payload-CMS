@@ -2,8 +2,8 @@ import React from 'react'
 import './styles.css'
 
 export const metadata = {
-  description: 'Internal sales dashboard for tracking and managing Packages Journey clients across all regions.',
-  title: 'Packages Journey · easyMarkets',
+  description: 'easyMarkets internal marketing operations and analytics workspace.',
+  title: 'RegFunnelOps · easyMarkets',
   icons: {
     icon: '/favicon.ico',
   },

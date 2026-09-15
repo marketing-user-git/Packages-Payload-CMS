@@ -1,9 +1,8 @@
 'use client'
 import dynamic from 'next/dynamic'
 
-// AppShell handles Payload auth + the role-gated app picker,
-// then hands off to the Packages dashboard (or Analytics, coming next).
-const AppShell = dynamic(() => import('./AppShell'), { ssr: false })
+// AppShellV2 handles Payload auth plus the RegFunnelOps / Analytics app picker.
+const AppShell = dynamic(() => import('./AppShellV2'), { ssr: false })
 
 export default function Page() {
   return <AppShell />
