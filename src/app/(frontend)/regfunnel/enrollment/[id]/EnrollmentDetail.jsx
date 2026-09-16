@@ -15,7 +15,7 @@ const COUNTRY_CODE = {
   Chile: 'cl', Argentina: 'ar',
 }
 
-const initialTheme = () => {
+const resolveStoredTheme = () => {
   if (typeof window === 'undefined') return 'dark'
   const stored = window.localStorage.getItem(THEME_KEY)
   if (stored === 'dark' || stored === 'light') return stored
@@ -65,14 +65,24 @@ const EVENT_META = {
 }
 
 export default function EnrollmentDetail({ enrollmentId }) {
-  const [theme, setTheme] = useState(initialTheme)
+  // Start from a deterministic SSR-safe value, then hydrate from the same
+  // persisted theme key used by the main RegFunnel dashboard. Crucially, do
+  // not write the fallback value back to localStorage before that read occurs.
+  const [theme, setTheme] = useState('dark')
+  const [themeReady, setThemeReady] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
+    setTheme(resolveStoredTheme())
+    setThemeReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!themeReady) return
     window.localStorage.setItem(THEME_KEY, theme)
-  }, [theme])
+  }, [theme, themeReady])
 
   useEffect(() => {
     let cancelled = false
@@ -130,6 +140,10 @@ export default function EnrollmentDetail({ enrollmentId }) {
       .filter((item) => item.timestamp)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
   }, [data])
+
+  if (!themeReady) {
+    return <div className={styles.themeBoot} aria-hidden="true" />
+  }
 
   if (loading) {
     return <div className={styles.fullState} data-theme={theme}>Loading enrollment…</div>
@@ -225,7 +239,7 @@ export default function EnrollmentDetail({ enrollmentId }) {
           </article>
 
           <article className={styles.panel}>
-            <div className={styles.panelHead}><div><h2>Email engagement</h2><p>Events captured from OneSignal delivery tracking</p></div></div>
+            <div className={styles.panelHead}><div><h2>Email engagement</h2><p>Events captured from Mailgun delivery tracking</p></div></div>
             <div className={styles.engagementGrid}>
               <div><span>Delivered</span><strong>{engagement.delivered || 0}</strong></div>
               <div><span>Opened</span><strong>{engagement.opened || 0}</strong></div>
