@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { readParam, writeParams, onPopState } from '@/lib/urlState'
-import { LOGO_B64 } from './Dashboard'
 import AnalyticsDashboard from './AnalyticsDashboard'
 import RegFunnelDashboard from './regfunnel/RegFunnelDashboard'
 
@@ -130,6 +129,33 @@ export default function AppShellV2() {
   )
 }
 
+function UiIcon({ name, size = 18 }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': true,
+  }
+
+  const paths = {
+    user: <><circle cx="12" cy="8" r="4" /><path d="M4.5 21a7.5 7.5 0 0 1 15 0" /></>,
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
+    eye: <><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /></>,
+    eyeOff: <><path d="m3 3 18 18" /><path d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-2.1 2.8M6.3 6.3C3.8 8 2.5 12 2.5 12s3.5 6 9.5 6a9.8 9.8 0 0 0 3-.5" /></>,
+    sun: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
+    moon: <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z" />,
+    check: <path d="m5 12 4 4L19 6" />,
+    logout: <><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /><path d="M14 4h4a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-4" /></>,
+  }
+
+  return <svg {...common}>{paths[name]}</svg>
+}
+
 function LoginScreen({ onAuthed, theme, onToggleTheme }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -170,20 +196,23 @@ function LoginScreen({ onAuthed, theme, onToggleTheme }) {
   }
 
   return (
-    <ScreenBg theme={theme}>
+    <ScreenBg theme={theme} className="authScreen">
       <div className="loginWrap">
-        <div className="loginTopActions"><ThemeToggle theme={theme} onToggle={onToggleTheme} /></div>
         <form className="loginGlass" onSubmit={submit}>
-          <div className="loginBrand">
-            <img src={`data:image/svg+xml;base64,${LOGO_B64}`} alt="easyMarkets" className="brandLogoLogin" />
+          <div className="loginCardTop">
+            <div className="loginBrand">
+              <img src="/brand/easymarkets-light.svg" alt="easyMarkets" className="brandLogoLogin" />
+            </div>
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           </div>
+
           <div className="loginTitle">Welcome back</div>
           <div className="loginSubtitle">Sign in to access easyMarkets internal tools.</div>
 
           <div className="formGroup">
             <label className="label" htmlFor="username">Username</label>
             <div className="inputShell">
-              <div className="fieldIcon">◎</div>
+              <span className="fieldIcon"><UiIcon name="user" size={18} /></span>
               <input id="username" className="field" value={username} autoFocus autoComplete="username" placeholder="e.g. natalia.a" onChange={(e) => { setUsername(e.target.value); setError('') }} />
             </div>
           </div>
@@ -191,15 +220,17 @@ function LoginScreen({ onAuthed, theme, onToggleTheme }) {
           <div className="formGroup">
             <label className="label" htmlFor="password">Password</label>
             <div className="passwordWrap inputShell">
-              <div className="fieldIcon">⌑</div>
+              <span className="fieldIcon"><UiIcon name="lock" size={17} /></span>
               <input id="password" className="field" value={password} type={show ? 'text' : 'password'} autoComplete="current-password" placeholder="Enter your password" onChange={(e) => { setPassword(e.target.value); setError('') }} />
-              <button type="button" className="showBtn" onClick={() => setShow((value) => !value)} aria-label={show ? 'Hide password' : 'Show password'}>{show ? '◉' : '○'}</button>
+              <button type="button" className="showBtn" onClick={() => setShow((value) => !value)} aria-label={show ? 'Hide password' : 'Show password'}>
+                <UiIcon name={show ? 'eyeOff' : 'eye'} size={18} />
+              </button>
             </div>
           </div>
 
           {error && <div className="errorBox" role="alert"><span>!</span><span>{error}</span></div>}
           <button type="submit" disabled={loading} className="primaryAction"><span>{loading ? 'Signing in...' : 'Sign in'}</span><span>→</span></button>
-          <div className="loginSecurity"><span>✓</span><span>Secure easyMarkets internal environment</span></div>
+          <div className="loginSecurity"><span className="loginSecurityIcon"><UiIcon name="check" size={14} /></span><span>Secure easyMarkets internal environment</span></div>
         </form>
       </div>
     </ScreenBg>
@@ -231,8 +262,10 @@ function AppPicker({ user, onPick, onLogout, theme, onToggleTheme }) {
     })
   }
 
+  const logoSrc = theme === 'light' ? '/brand/easymarkets-light.svg' : '/brand/easymarkets-dark.svg'
+
   return (
-    <ScreenBg theme={theme}>
+    <ScreenBg theme={theme} className="pickerScreen">
       <div className="pickerFrame">
         <div className="pickerPanel">
           <div className="panelGlow panelGlowLeft" />
@@ -241,13 +274,13 @@ function AppPicker({ user, onPick, onLogout, theme, onToggleTheme }) {
           <div className="waveDots waveDotsRight" />
 
           <header className="pickerHeader">
-            <div className="pickerBrand"><img src={`data:image/svg+xml;base64,${LOGO_B64}`} alt="easyMarkets" className="brandLogoLight" /></div>
+            <div className="pickerBrand"><img src={logoSrc} alt="easyMarkets" className="brandLogoLight" /></div>
             <div className="pickerActions">
               <ThemeToggle theme={theme} onToggle={onToggleTheme} />
               <div className="pickerUser">
                 <div className="pickerAvatar">{(user.name || user.username || 'U').charAt(0).toUpperCase()}</div>
                 <div className="pickerUserCopy"><span className="userName">{user.name || user.username}</span><span className="userStatus">Signed in</span></div>
-                <button type="button" className="pickerLogout" onClick={onLogout} aria-label="Sign out" title="Sign out">↪</button>
+                <button type="button" className="pickerLogout" onClick={onLogout} aria-label="Sign out" title="Sign out"><UiIcon name="logout" size={17} /></button>
               </div>
             </div>
           </header>
@@ -283,13 +316,11 @@ function AppPicker({ user, onPick, onLogout, theme, onToggleTheme }) {
 }
 
 function FunnelVisual() {
-  const nodeStyle = { width: 46, height: 46, borderRadius: 14, border: '1px solid rgba(81,237,205,.38)', background: 'rgba(24,190,181,.15)', display: 'grid', placeItems: 'center', color: '#63ead3', fontWeight: 800, fontSize: 12, boxShadow: '0 0 24px rgba(24,190,181,.12)' }
-  const lineStyle = { width: 42, height: 2, background: 'linear-gradient(90deg,rgba(99,234,211,.25),rgba(99,234,211,.85))', position: 'relative' }
   return (
-    <div style={{ height: '100%', minHeight: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-      <div style={{ position: 'absolute', width: 260, height: 110, borderRadius: '50%', background: 'radial-gradient(circle,rgba(34,211,190,.12),transparent 68%)', filter: 'blur(8px)' }} />
-      <div style={{ display: 'flex', alignItems: 'center', position: 'relative', zIndex: 1 }}>
-        <div style={nodeStyle}>01</div><div style={lineStyle} /><div style={nodeStyle}>06</div><div style={lineStyle} /><div style={nodeStyle}>15</div>
+    <div className="funnelVisual">
+      <div className="funnelGlow" />
+      <div className="funnelNodes">
+        <div className="funnelNode">01</div><div className="funnelLine" /><div className="funnelNode">06</div><div className="funnelLine" /><div className="funnelNode">15</div>
       </div>
     </div>
   )
@@ -309,11 +340,15 @@ function AnalyticsVisual() {
 
 function ThemeToggle({ theme, onToggle }) {
   const light = theme === 'light'
-  return <button type="button" className="themeToggle" onClick={onToggle} aria-label={light ? 'Switch to dark mode' : 'Switch to light mode'} title={light ? 'Dark mode' : 'Light mode'}><span className="themeToggleIcon">{light ? '◐' : '☀'}</span></button>
+  return (
+    <button type="button" className="themeToggle" onClick={onToggle} aria-label={light ? 'Switch to dark mode' : 'Switch to light mode'} title={light ? 'Dark mode' : 'Light mode'}>
+      <span className="themeToggleIcon"><UiIcon name={light ? 'moon' : 'sun'} size={17} /></span>
+    </button>
+  )
 }
 
-function ScreenBg({ children, theme }) {
-  return <div className="screenBg" data-theme={theme}>{children}</div>
+function ScreenBg({ children, theme, className = '' }) {
+  return <div className={`screenBg ${className}`.trim()} data-theme={theme}>{children}</div>
 }
 
 function Loader() {

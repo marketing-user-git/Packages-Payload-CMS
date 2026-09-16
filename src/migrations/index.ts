@@ -1,6 +1,7 @@
-import * as migration_20260905_210931_baseline_existing_schema from './20260905_210931_baseline_existing_schema';
-import * as migration_20260905_211125_add_regfunnelops_collections from './20260905_211125_add_regfunnelops_collections';
-import * as migration_20260907_075443_add_regfunnelops_rules from './20260907_075443_add_regfunnelops_rules';
+import * as migration_20260905_210931_baseline_existing_schema from './20260905_210931_baseline_existing_schema'
+import * as migration_20260905_211125_add_regfunnelops_collections from './20260905_211125_add_regfunnelops_collections'
+import * as migration_20260907_075443_add_regfunnelops_rules from './20260907_075443_add_regfunnelops_rules'
+import * as migration_20260916_104500_harden_regfunnel_schema from './20260916_104500_harden_regfunnel_schema'
 
 export const migrations = [
   {
@@ -16,6 +17,11 @@ export const migrations = [
   {
     up: migration_20260907_075443_add_regfunnelops_rules.up,
     down: migration_20260907_075443_add_regfunnelops_rules.down,
-    name: '20260907_075443_add_regfunnelops_rules'
+    name: '20260907_075443_add_regfunnelops_rules',
   },
-];
+  {
+    up: migration_20260916_104500_harden_regfunnel_schema.up,
+    down: migration_20260916_104500_harden_regfunnel_schema.down,
+    name: '20260916_104500_harden_regfunnel_schema',
+  },
+]

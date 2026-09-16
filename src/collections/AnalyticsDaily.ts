@@ -1,8 +1,10 @@
 import type { CollectionConfig } from 'payload'
 
+const isInternal = ({ req }: { req: any }) =>
+  Boolean(req?.user?.superAdmin) || req?.user?.department === 'marketing'
+
 // Pre-aggregated daily rollup — one row per (date × channel × source × template × region).
 // This is what the Analytics dashboard reads: fast, small, chart-ready.
-// Populated by mock seed now; by a scheduled rollup job over Events later.
 const AnalyticsDaily: CollectionConfig = {
   slug: 'analytics-daily',
   admin: {
@@ -11,7 +13,7 @@ const AnalyticsDaily: CollectionConfig = {
     group: 'Analytics',
   },
   access: {
-    read: () => true,
+    read: isInternal,
     create: ({ req: { user } }) => Boolean(user?.superAdmin),
     update: ({ req: { user } }) => Boolean(user?.superAdmin),
     delete: ({ req: { user } }) => Boolean(user?.superAdmin),
@@ -28,7 +30,6 @@ const AnalyticsDaily: CollectionConfig = {
     { name: 'templateKey', type: 'text', index: true },
     { name: 'templateName', type: 'text' },
     { name: 'region', type: 'text' },
-    // Counts (all integers)
     { name: 'sent', type: 'number', defaultValue: 0 },
     { name: 'delivered', type: 'number', defaultValue: 0 },
     { name: 'uniqueOpens', type: 'number', defaultValue: 0 },
