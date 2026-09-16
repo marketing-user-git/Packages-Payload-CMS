@@ -15,12 +15,10 @@ export const APPS: Record<string, { source: string; restKey?: string; tplField: 
 }
 
 // ── Mailgun HMAC verification ─────────────────────────────────────────────────
-// Mailgun posts { signature: { timestamp, token, signature }, "event-data": {...} }
 export function verifyMailgun(sig: { timestamp: string; token: string; signature: string }): boolean {
   const key = process.env.MAILGUN_SIGNING_KEY
   if (!key || !sig?.timestamp || !sig?.token || !sig?.signature) return false
   const digest = crypto.createHmac('sha256', key).update(sig.timestamp + sig.token).digest('hex')
-  // constant-time compare
   try {
     return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(sig.signature))
   } catch {
@@ -32,7 +30,9 @@ export function verifyMailgun(sig: { timestamp: string; token: string; signature
 export function mapMailgunEvent(ed: any): string | null {
   const e = ed?.event
   switch (e) {
-    case 'accepted': return 'accepted'
+    // SendLog is the RegFunnel source of truth for sends. We deliberately do
+    // not ingest Mailgun "accepted" as another sent signal.
+    case 'accepted': return null
     case 'delivered': return 'delivered'
     case 'opened': return 'opened'
     case 'clicked': return 'clicked'
@@ -40,7 +40,7 @@ export function mapMailgunEvent(ed: any): string | null {
     case 'complained': return 'complained'
     case 'failed':
       return ed?.severity === 'permanent' ? 'bounced_hard' : 'bounced_soft'
-    default: return null // ignore stored/rejected/etc for now
+    default: return null
   }
 }
 
@@ -53,7 +53,6 @@ export async function resolveTemplate(
   const empty = { templateKey: null, templateName: null, templateId: null }
   if (!notificationId) return empty
 
-  // 1) cache hit?
   const cached = await payload.find({
     collection: 'notifications-cache',
     where: { notificationId: { equals: notificationId } },
@@ -64,24 +63,24 @@ export async function resolveTemplate(
     return { templateKey: c.templateKey || null, templateName: null, templateId: c.templateId || null }
   }
 
-  // 2) call OneSignal (only on cache miss → once per notification)
   const appCfg = appId ? APPS[appId] : undefined
   let templateId: string | null = null
   let templateName: string | null = null
   if (appCfg?.restKey && appId) {
     try {
       const r = await fetch(`https://api.onesignal.com/notifications/${notificationId}?app_id=${appId}`, {
-        headers: { Authorization: `Key ${appCfg.restKey}` }, // some apps use `Key ${restKey}` — adjust if 401
+        headers: { Authorization: `Key ${appCfg.restKey}` },
       })
       if (r.ok) {
         const data = await r.json()
         templateId = data?.template_id || null
         templateName = data?.name || null
       }
-    } catch { /* network issue — leave null, we'll still record the event */ }
+    } catch {
+      // Network issues must not prevent raw delivery events being stored.
+    }
   }
 
-  // 3) map raw templateId → canonical templateKey
   let templateKey: string | null = null
   if (templateId && appCfg) {
     const m = await payload.find({
@@ -95,7 +94,6 @@ export async function resolveTemplate(
     }
   }
 
-  // 4) cache result (even if partial, to avoid repeat API calls)
   try {
     await payload.create({
       collection: 'notifications-cache',
@@ -109,29 +107,43 @@ export async function resolveTemplate(
         firstSeen: new Date().toISOString(),
       } as any,
     })
-  } catch { /* unique race — ignore */ }
+  } catch {
+    // Unique race: another request cached the same notification first.
+  }
 
   return { templateKey, templateName, templateId }
 }
 
-// ── Uniqueness for opens/clicks (first per recipient+message) ──────────────────
+// ── Event idempotency / uniqueness ────────────────────────────────────────────
+async function providerEventRecorded(payload: any, providerEventId: string): Promise<boolean> {
+  if (!providerEventId) return false
+  const existing = await payload.find({
+    collection: 'events',
+    where: { providerEventId: { equals: providerEventId } },
+    limit: 1,
+    overrideAccess: true,
+  })
+  return existing.docs.length > 0
+}
+
 async function isFirst(payload: any, messageId: string, recipient: string, eventType: string): Promise<boolean> {
   if (!messageId || !recipient) return true
   const existing = await payload.find({
     collection: 'events',
     where: { and: [{ messageId: { equals: messageId } }, { recipient: { equals: recipient } }, { eventType: { equals: eventType } }] },
     limit: 1,
+    overrideAccess: true,
   })
   return existing.docs.length === 0
 }
 
-// ── Dedup for one-per-message events (delivered/accepted/bounce/etc) ───────────
 async function alreadyRecorded(payload: any, messageId: string, eventType: string): Promise<boolean> {
   if (!messageId) return false
   const existing = await payload.find({
     collection: 'events',
     where: { and: [{ messageId: { equals: messageId } }, { eventType: { equals: eventType } }] },
     limit: 1,
+    overrideAccess: true,
   })
   return existing.docs.length > 0
 }
@@ -140,8 +152,8 @@ async function alreadyRecorded(payload: any, messageId: string, eventType: strin
 const COUNTER: Record<string, string[]> = {
   accepted: ['sent'],
   delivered: ['delivered'],
-  opened: ['totalOpens'],       // uniqueOpens added conditionally
-  clicked: ['totalClicks'],     // uniqueClicks added conditionally
+  opened: ['totalOpens'],
+  clicked: ['totalClicks'],
   bounced_hard: ['hardBounces'],
   bounced_soft: ['softBounces'],
   complained: ['complaints'],
@@ -169,6 +181,7 @@ async function applyToRollup(payload: any, ev: any) {
       ],
     },
     limit: 1,
+    overrideAccess: true,
   })
 
   const inc = COUNTER[ev.eventType] || []
@@ -198,31 +211,52 @@ async function applyToRollup(payload: any, ev: any) {
 // ── Main: ingest one normalized event (write raw + rollup) ─────────────────────
 export async function ingestEvent(payload: any, ev: {
   channel: string; source: string; eventType: string;
-  recipient?: string; messageId?: string; notificationId?: string;
+  providerEventId?: string; recipient?: string; messageId?: string; notificationId?: string;
   templateKey?: string | null; templateName?: string | null; templateId?: string | null;
   region?: string; timestamp: string; metadata?: any;
 }) {
+  if (ev.providerEventId && (await providerEventRecorded(payload, ev.providerEventId))) {
+    return { skipped: 'duplicate_provider_event' }
+  }
+
   const multiEvent = ev.eventType === 'opened' || ev.eventType === 'clicked'
 
-  // dedup one-per-message events
   if (!multiEvent && ev.messageId && (await alreadyRecorded(payload, ev.messageId, ev.eventType))) {
-    return { skipped: 'duplicate' }
+    return { skipped: 'duplicate_message_event' }
   }
 
   const isUnique = multiEvent
     ? await isFirst(payload, ev.messageId || '', ev.recipient || '', ev.eventType)
     : false
 
-  await payload.create({
-    collection: 'events',
-    overrideAccess: true,
-    data: {
-      channel: ev.channel, source: ev.source, eventType: ev.eventType,
-      recipient: ev.recipient, messageId: ev.messageId, notificationId: ev.notificationId,
-      templateKey: ev.templateKey || undefined, templateId: ev.templateId || undefined,
-      region: ev.region, timestamp: ev.timestamp, isUnique, metadata: ev.metadata,
-    } as any,
-  })
+  try {
+    await payload.create({
+      collection: 'events',
+      overrideAccess: true,
+      data: {
+        channel: ev.channel,
+        source: ev.source,
+        eventType: ev.eventType,
+        providerEventId: ev.providerEventId || undefined,
+        recipient: ev.recipient,
+        messageId: ev.messageId,
+        notificationId: ev.notificationId,
+        templateKey: ev.templateKey || undefined,
+        templateId: ev.templateId || undefined,
+        region: ev.region,
+        timestamp: ev.timestamp,
+        isUnique,
+        metadata: ev.metadata,
+      } as any,
+    })
+  } catch (error) {
+    // The DB unique index is the concurrency backstop for simultaneous webhook
+    // retries that race past the pre-check.
+    if (ev.providerEventId && (await providerEventRecorded(payload, ev.providerEventId))) {
+      return { skipped: 'duplicate_provider_event' }
+    }
+    throw error
+  }
 
   await applyToRollup(payload, { ...ev, isUnique })
   return { ok: true, isUnique }
