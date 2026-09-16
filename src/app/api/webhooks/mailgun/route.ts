@@ -2,6 +2,8 @@ import configPromise from '@payload-config'
 import { getPayload } from 'payload'
 import { verifyMailgun, mapMailgunEvent, resolveTemplate, ingestEvent, APPS } from '@/lib/analytics/webhookUtils'
 
+const DEFAULT_MAX_SIGNATURE_AGE_SECONDS = 24 * 60 * 60
+
 const normalizeUserVariables = (value: any): Record<string, any> => {
   if (!value) return {}
   if (!Array.isArray(value) && typeof value === 'object') return value
@@ -25,7 +27,7 @@ const verifySignature = (sig: any) => {
   if (verifyMailgun(sig)) return true
 
   // Account/subaccount webhooks can include a parent signature. This lets a
-  // parent signing key validate child-domain events without weakening normal HMAC checks.
+  // parent signing key validate child-domain events with the same HMAC rules.
   if (sig['parent-signature']) {
     return verifyMailgun({
       timestamp: sig.timestamp,
@@ -37,6 +39,19 @@ const verifySignature = (sig: any) => {
   return false
 }
 
+const signatureIsFresh = (sig: any) => {
+  const timestamp = Number(sig?.timestamp)
+  if (!Number.isFinite(timestamp)) return false
+
+  const configured = Number(process.env.MAILGUN_WEBHOOK_MAX_AGE_SECONDS)
+  const maxAgeSeconds = Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_MAX_SIGNATURE_AGE_SECONDS
+  const nowSeconds = Date.now() / 1000
+
+  return Math.abs(nowSeconds - timestamp) <= maxAgeSeconds
+}
+
 export const POST = async (req: Request) => {
   let body: any
   try {
@@ -45,9 +60,6 @@ export const POST = async (req: Request) => {
     return Response.json({ error: 'invalid json' }, { status: 400 })
   }
 
-  // Mailgun normally sends { signature, "event-data" }. Keep a direct-event
-  // fallback as well so the receiver is resilient to account/domain webhook
-  // envelope differences while retaining signature verification.
   const sig = body?.signature
   const ed = body?.['event-data'] || body
   if (!sig || !ed?.event) {
@@ -56,6 +68,13 @@ export const POST = async (req: Request) => {
 
   if (!verifySignature(sig)) {
     return Response.json({ error: 'signature verification failed' }, { status: 401 })
+  }
+
+  // Mailgun recommends optionally rejecting signatures whose timestamp is too
+  // far from current time. The 24h default is intentionally lenient so normal
+  // provider delays/retries are not rejected; it can be overridden by env.
+  if (!signatureIsFresh(sig)) {
+    return Response.json({ error: 'stale webhook signature' }, { status: 401 })
   }
 
   const eventType = mapMailgunEvent(ed)
@@ -67,9 +86,8 @@ export const POST = async (req: Request) => {
   const appId: string | undefined = uv.app_id || uv.appId
   const notificationId: string | undefined = uv.notification_id || uv.notificationId
 
-  // ms.easy-markets.com carries much more traffic than RegFunnelOps. Do not
-  // persist generic Mailgun traffic. A valid RegFunnel event must carry the
-  // OneSignal notification_id that was recorded by our Sender in SendLog.
+  // ms.easy-markets.com carries much more traffic than RegFunnelOps. A valid
+  // RegFunnel event must carry the OneSignal notification_id recorded by Sender.
   if (!notificationId) {
     return Response.json({
       ok: true,
@@ -102,15 +120,13 @@ export const POST = async (req: Request) => {
     }, { status: 200 })
   }
 
+  const providerEventId: string | undefined = ed?.id ? String(ed.id) : undefined
   const messageId: string | undefined = ed?.message?.headers?.['message-id']
   const recipient: string | undefined = ed?.recipient
   const region: string | undefined = uv.region
   const tsSec = ed?.timestamp || sig?.timestamp
   const timestamp = new Date((Number(tsSec) || Date.now() / 1000) * 1000).toISOString()
 
-  // The RegFunnel identity bridge is notification_id -> SendLog.notificationId.
-  // Template resolution only happens after that bridge has been validated, so
-  // unrelated Mailgun traffic can never trigger lookups or writes downstream.
   const tpl = await resolveTemplate(payload, notificationId, appId)
 
   try {
@@ -118,6 +134,7 @@ export const POST = async (req: Request) => {
       channel: 'email',
       source: 'mailgun',
       eventType,
+      providerEventId,
       recipient,
       messageId,
       notificationId,
@@ -128,7 +145,7 @@ export const POST = async (req: Request) => {
       timestamp,
       metadata: {
         appSource: appId && APPS[appId] ? APPS[appId].source : undefined,
-        mailgunEventId: ed?.id,
+        mailgunEventId: providerEventId,
         severity: ed?.severity,
         reason: ed?.reason,
         geo: ed?.geolocation,
@@ -152,7 +169,6 @@ export const POST = async (req: Request) => {
   }
 }
 
-// Useful both locally and in production for a zero-side-effect health check.
 export const GET = async () => Response.json({
   ok: true,
   route: 'mailgun webhook',
