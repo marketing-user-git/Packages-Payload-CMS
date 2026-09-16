@@ -1,0 +1,80 @@
+/* RegFunnelOps sidebar information architecture.
+   Kept global so it can style the CSS-module navigation by stable aria structure. */
+
+nav[aria-label='RegFunnelOps navigation'] > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+nav[aria-label='RegFunnelOps navigation'] > div + div {
+  margin-top: 13px;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--cyan) 14%, transparent);
+}
+
+nav[aria-label='RegFunnelOps navigation'] > div > span:first-child {
+  display: block;
+  padding: 0 12px 5px;
+  color: var(--subtle);
+  font-size: 8.5px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 1.35px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+nav[aria-label='RegFunnelOps navigation'] > div:last-child > a {
+  background: color-mix(in srgb, var(--surface-soft) 26%, transparent);
+}
+
+nav[aria-label='RegFunnelOps navigation'] > div:last-child > a:hover {
+  background: color-mix(in srgb, var(--surface-soft) 58%, transparent);
+}
+
+@media (max-height: 700px) and (min-width: 1051px) {
+  nav[aria-label='RegFunnelOps navigation'] > div {
+    gap: 4px;
+  }
+
+  nav[aria-label='RegFunnelOps navigation'] > div + div {
+    margin-top: 8px;
+    padding-top: 9px;
+  }
+
+  nav[aria-label='RegFunnelOps navigation'] > div > span:first-child {
+    padding-bottom: 3px;
+  }
+}
+
+@media (max-width: 1050px) {
+  nav[aria-label='RegFunnelOps navigation'] {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 0;
+  }
+
+  nav[aria-label='RegFunnelOps navigation'] > div {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  nav[aria-label='RegFunnelOps navigation'] > div + div {
+    margin-top: 0;
+    padding-top: 12px;
+  }
+
+  nav[aria-label='RegFunnelOps navigation'] > div > span:first-child {
+    grid-column: 1 / -1;
+    padding: 0 6px 2px;
+  }
+}
+
+@media (max-width: 650px) {
+  nav[aria-label='RegFunnelOps navigation'] > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
