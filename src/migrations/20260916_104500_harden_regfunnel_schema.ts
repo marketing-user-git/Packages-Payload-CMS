@@ -13,11 +13,22 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
 
     ALTER TYPE "public"."enum_funnel_config_conversion_rules_conditions_op"
       ADD VALUE IF NOT EXISTS 'not_exists';
+
+    ALTER TABLE "events"
+      ADD COLUMN IF NOT EXISTS "provider_event_id" varchar;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS "events_provider_event_id_unique_idx"
+      ON "events" ("provider_event_id")
+      WHERE "provider_event_id" IS NOT NULL;
   `)
 }
 
-export async function down({ db: _db }: MigrateDownArgs): Promise<void> {
-  // Intentionally irreversible. PostgreSQL enum values cannot be removed safely
-  // without rebuilding the enum and every dependent column. Removing these values
-  // could also invalidate existing production rows/rules.
+export async function down({ db }: MigrateDownArgs): Promise<void> {
+  await db.execute(sql`
+    DROP INDEX IF EXISTS "events_provider_event_id_unique_idx";
+    ALTER TABLE "events" DROP COLUMN IF EXISTS "provider_event_id";
+  `)
+
+  // Enum additions are intentionally not removed. PostgreSQL enum values cannot
+  // be removed safely without rebuilding the enum and every dependent column.
 }
