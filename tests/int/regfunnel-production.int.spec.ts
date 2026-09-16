@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { Users } from '@/collections/Users'
+import AnalyticsDaily from '@/collections/AnalyticsDaily'
+import Events from '@/collections/Events'
+import { TemplateMappings, NotificationsCache } from '@/collections/AnalyticsSupport'
 import { CNJP_SEQUENCE, ROW_SEQUENCE, RULE_OPS } from '@/globals/FunnelConfig'
+import { mapMailgunEvent } from '@/lib/analytics/webhookUtils'
 
 const fieldByName = (name: string) =>
   Users.fields.find((field: any) => field?.name === name) as any
@@ -8,6 +12,12 @@ const fieldByName = (name: string) =>
 const canUpdateField = (name: string, user: any) => {
   const field = fieldByName(name)
   return field?.access?.update?.({ req: { user } })
+}
+
+const canRead = (collection: any, user: any) => {
+  const read = collection.access?.read
+  if (typeof read !== 'function') return read
+  return read({ req: { user } })
 }
 
 describe('RegFunnel production invariants', () => {
@@ -79,5 +89,24 @@ describe('RegFunnel production invariants', () => {
     expect(canUpdateField('level', admin)).toBe(true)
     expect(canUpdateField('regions', admin)).toBe(true)
     expect(canUpdateField('superAdmin', admin)).toBe(true)
+  })
+
+  it('keeps raw and support analytics collections internal-only', () => {
+    const collections = [Events, AnalyticsDaily, TemplateMappings, NotificationsCache]
+    const marketing = { department: 'marketing', superAdmin: false }
+    const sales = { department: 'sales', superAdmin: false }
+
+    for (const collection of collections) {
+      expect(canRead(collection, null)).toBe(false)
+      expect(canRead(collection, sales)).toBe(false)
+      expect(canRead(collection, marketing)).toBe(true)
+    }
+  })
+
+  it('does not count Mailgun accepted as a RegFunnel send', () => {
+    expect(mapMailgunEvent({ event: 'accepted' })).toBeNull()
+    expect(mapMailgunEvent({ event: 'delivered' })).toBe('delivered')
+    expect(mapMailgunEvent({ event: 'failed', severity: 'permanent' })).toBe('bounced_hard')
+    expect(mapMailgunEvent({ event: 'failed', severity: 'temporary' })).toBe('bounced_soft')
   })
 })
