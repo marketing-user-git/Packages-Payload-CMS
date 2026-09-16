@@ -1,8 +1,9 @@
 import type { CollectionConfig } from 'payload'
 
-// Canonical template mapping — unites the "same" template across the two OneSignal apps.
-// e.g. welcome_bronze → { global: "abc-111", china: "xyz-222" }
-// This is what lets you aggregate a template across both apps.
+const isInternal = ({ req }: { req: any }) =>
+  Boolean(req?.user?.superAdmin) || req?.user?.department === 'marketing'
+
+// Canonical template mapping — unites the same template across the two OneSignal apps.
 export const TemplateMappings: CollectionConfig = {
   slug: 'template-mappings',
   admin: {
@@ -11,7 +12,7 @@ export const TemplateMappings: CollectionConfig = {
     group: 'Analytics',
   },
   access: {
-    read: () => true,
+    read: isInternal,
     create: ({ req: { user } }) => Boolean(user?.superAdmin),
     update: ({ req: { user } }) => Boolean(user?.superAdmin),
     delete: ({ req: { user } }) => Boolean(user?.superAdmin),
@@ -22,7 +23,7 @@ export const TemplateMappings: CollectionConfig = {
       type: 'text',
       required: true,
       unique: true,
-      admin: { description: 'Canonical key, e.g. welcome_bronze.' },
+      admin: { description: 'Canonical template key.' },
     },
     { name: 'templateName', type: 'text', required: true },
     {
@@ -30,25 +31,24 @@ export const TemplateMappings: CollectionConfig = {
       type: 'text',
       index: true,
       admin: {
-        description:
-          'Auto-derived group (prefix before the first " - "). Used for the Family view.',
+        description: 'Auto-derived template family used by Analytics.',
       },
     },
     {
       name: 'globalTemplateId',
       type: 'text',
-      admin: { description: 'Raw template id in the global OneSignal app.' },
+      admin: { description: 'Raw template ID in the Global OneSignal app.' },
     },
     {
       name: 'chinaTemplateId',
       type: 'text',
-      admin: { description: 'Raw template id in the China OneSignal app.' },
+      admin: { description: 'Raw template ID in the China OneSignal app.' },
     },
   ],
 }
 
 // Cache: notification_id → resolved template + app.
-// Lets the webhook enrichment hit the OneSignal API only ONCE per notification.
+// Lets webhook enrichment hit the OneSignal API only once per notification.
 export const NotificationsCache: CollectionConfig = {
   slug: 'notifications-cache',
   admin: {
@@ -57,7 +57,7 @@ export const NotificationsCache: CollectionConfig = {
     group: 'Analytics',
   },
   access: {
-    read: () => true,
+    read: isInternal,
     create: ({ req: { user } }) => Boolean(user?.superAdmin),
     update: ({ req: { user } }) => Boolean(user?.superAdmin),
     delete: ({ req: { user } }) => Boolean(user?.superAdmin),
