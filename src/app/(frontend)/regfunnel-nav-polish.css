@@ -33,14 +33,13 @@ nav[aria-label='RegFunnelOps navigation'] > div:last-child > a:hover {
   background: color-mix(in srgb, var(--surface-soft) 58%, transparent);
 }
 
-/* Product identity mark now uses the generated raster artwork through a
-   dedicated image asset instead of drawing the mark in CSS. */
+/* Product identity mark uses the generated PNG artwork directly. */
 aside:has(> nav[aria-label='RegFunnelOps navigation']) > div:nth-child(2) > div:first-child {
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   font-size: 0 !important;
   color: transparent !important;
-  background: transparent url('/brand/regfunnelops-icon.svg') center / contain no-repeat !important;
+  background: transparent url('/brand/regfunnelops-icon.png') center / cover no-repeat !important;
   box-shadow: none !important;
 }
 
