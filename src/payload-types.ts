@@ -294,7 +294,7 @@ export interface Event {
   id: number;
   channel: 'email' | 'push';
   /**
-   * Which system produced the event. Email=mailgun (source of truth); push=onesignal_*.
+   * Provider/source that produced the event.
    */
   source: 'mailgun' | 'onesignal_global' | 'onesignal_china';
   eventType:
@@ -308,33 +308,33 @@ export interface Event {
     | 'unsubscribed'
     | 'failed';
   /**
-   * Email address or push player_id.
+   * Email address or push subscription target.
    */
   recipient?: string | null;
   /**
-   * Mailgun message-id — stable per email, used for dedup.
+   * Provider event/message key used for deduplication.
    */
   messageId?: string | null;
   /**
-   * OneSignal notification_id — key to resolve template.
+   * OneSignal message/notification ID — join key to SendLog.
    */
   notificationId?: string | null;
   /**
-   * Canonical template key (resolved via TemplateMappings).
+   * Canonical template key.
    */
   templateKey?: string | null;
   /**
-   * Raw per-app template id.
+   * Raw provider template ID.
    */
   templateId?: string | null;
   region?: string | null;
   timestamp: string;
   /**
-   * First open/click for this recipient+message (for unique-rate math).
+   * First open/click for this recipient+message.
    */
   isUnique?: boolean | null;
   /**
-   * Raw provider payload snippet (geo, client, etc).
+   * Provider payload/context.
    */
   metadata?:
     | {
