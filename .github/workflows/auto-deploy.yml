@@ -1,17 +1,73 @@
-name: autodeployment for main branch
+name: RegFunnel quality and production deployment
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  build:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      PAYLOAD_SECRET: ci-only-payload-secret-not-for-production
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/payload_ci
+      MAILGUN_SIGNING_KEY: ci-mailgun-signing-key
+      ONESIGNAL_GLOBAL_APP_ID: 00000000-0000-0000-0000-000000000001
+      ONESIGNAL_GLOBAL_REST_KEY: ci-global-rest-key
+      ONESIGNAL_CHINA_APP_ID: 00000000-0000-0000-0000-000000000002
+      ONESIGNAL_CHINA_REST_KEY: ci-china-rest-key
+      WEBHOOK_SHARED_SECRET: ci-webhook-shared-secret
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: payload_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d payload_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: RegFunnel production invariant tests
+        run: pnpm exec vitest run tests/int/regfunnel-production.int.spec.ts --config ./vitest.config.mts
+
+      - name: Production build
+        run: pnpm build
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
     runs-on: self-hosted
 
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-    - name: deploy on pkg.easy-markets.com
-      run: |
-        cd ~/server.sys.admin
-        ansible-playbook deploy-pkg-prd.yml
+      - name: Deploy on pkg.easy-markets.com
+        run: |
+          cd ~/server.sys.admin
+          ansible-playbook deploy-pkg-prd.yml
