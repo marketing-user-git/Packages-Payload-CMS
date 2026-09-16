@@ -33,23 +33,20 @@ nav[aria-label='RegFunnelOps navigation'] > div:last-child > a:hover {
   background: color-mix(in srgb, var(--surface-soft) 58%, transparent);
 }
 
-/* Product identity mark: three inputs visibly narrow into one central flow,
-   then continue to a single output. The symmetric geometry reads as a funnel
-   rather than a generic share / branching icon at small sizes. */
+/* Product identity mark now uses the generated raster artwork through a
+   dedicated image asset instead of drawing the mark in CSS. */
 aside:has(> nav[aria-label='RegFunnelOps navigation']) > div:nth-child(2) > div:first-child {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   font-size: 0 !important;
   color: transparent !important;
+  background: transparent url('/brand/regfunnelops-icon.svg') center / contain no-repeat !important;
+  box-shadow: none !important;
 }
 
 aside:has(> nav[aria-label='RegFunnelOps navigation']) > div:nth-child(2) > div:first-child::before {
-  content: '';
-  width: 31px;
-  height: 31px;
-  display: block;
-  background: center / contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke='%2306212b' stroke-width='2.15' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='5.5' cy='7' r='2' fill='%2306212b' stroke='none'/%3E%3Ccircle cx='5.5' cy='16' r='2' fill='%2306212b' stroke='none'/%3E%3Ccircle cx='5.5' cy='25' r='2' fill='%2306212b' stroke='none'/%3E%3Cpath d='M8 7h3.2l5.2 7M8 16h8.4M8 25h3.2l5.2-7'/%3E%3Ccircle cx='18.2' cy='16' r='2.35' fill='%2306212b' stroke='none'/%3E%3Cpath d='M21 16h6.2M24.7 12.8 28 16l-3.3 3.2'/%3E%3C/g%3E%3C/svg%3E");
-  filter: drop-shadow(0 1px 0 rgba(255,255,255,.16));
+  display: none !important;
+  content: none !important;
 }
 
 @media (max-height: 700px) and (min-width: 1051px) {
