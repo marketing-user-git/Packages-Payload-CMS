@@ -50,7 +50,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm dlx eslint@9.39.1 .
 
       - name: RegFunnel production invariant tests
         run: pnpm exec vitest run tests/int/regfunnel-production.int.spec.ts --config ./vitest.config.mts
