@@ -375,12 +375,18 @@ export default function RegFunnelDashboard({ onBack, user, onLogout, theme: them
         <div className={styles.sidebarGlow} aria-hidden="true" />
         <div className={styles.brand}><div className={styles.brandMark}>RF</div><div><strong>RegFunnelOps</strong><small>Marketing Operations</small></div></div>
         <nav className={styles.nav} aria-label="RegFunnelOps navigation">
-          <NavItem href="#overview" icon="home" label="Overview" sub="Key metrics & insights" active />
-          <NavItem href="#enrollments" icon="users" label="Enrollments" sub="People in your funnel" />
-          <NavItem href="#journey" icon="journey" label="Journey" sub="Funnel stages & email steps" />
-          <NavItem href="#ab" icon="flask" label="A/B Tests" sub="Experiment results" />
-          <NavItem href="#send-health" icon="mail" label="Sends & Errors" sub="Delivery and issues" />
-          <NavItem href="/?app=analytics" icon="report" label="Reports" sub="Open Marketing Analytics" />
+          <div className={styles.navGroup}>
+            <span className={styles.navGroupLabel}>FUNNEL OPERATIONS</span>
+            <NavItem href="#overview" icon="home" label="Overview" sub="Key metrics & insights" active />
+            <NavItem href="#enrollments" icon="users" label="Enrollments" sub="People in your funnel" />
+            <NavItem href="#journey" icon="journey" label="Journey" sub="Funnel stages & email steps" />
+            <NavItem href="#ab" icon="flask" label="Variants" sub="A/B performance" />
+            <NavItem href="#send-health" icon="mail" label="Sends & Errors" sub="Delivery and issues" />
+          </div>
+          <div className={styles.navGroup}>
+            <span className={styles.navGroupLabel}>OTHER APPS</span>
+            <NavItem href="/?app=analytics" icon="report" label="Marketing Analytics" sub="Open analytics workspace" />
+          </div>
         </nav>
       </aside>
 
