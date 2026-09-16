@@ -4,27 +4,25 @@ import type { Access, CollectionConfig } from 'payload'
 const REGION_OPTIONS = ['Brazil', 'South Africa', 'INT', 'MENA', 'LATAM', 'ROW']
 
 // ── Access helpers ────────────────────────────────────────────────────────────
-// A super-admin (that's you) can do anything. Managers can read the roster.
-// Everyone else can only read/update their own record.
 const isSuperAdmin = (user: any): boolean => Boolean(user?.superAdmin)
 const isManager = (user: any): boolean => user?.level === 'manager'
 
 const readAccess: Access = ({ req: { user } }) => {
   if (!user) return false
   if (isSuperAdmin(user) || isManager(user)) return true
-  // Regular members: only their own record
   return { id: { equals: user.id } }
 }
 
 const updateAccess: Access = ({ req: { user } }) => {
   if (!user) return false
   if (isSuperAdmin(user)) return true
-  // Members can update their own record (e.g. change password) but not others
+  // Members may update their own profile/auth record, but role-bearing fields
+  // below are separately protected at field level.
   return { id: { equals: user.id } }
 }
 
-// Only the super-admin creates or removes accounts.
 const adminOnly: Access = ({ req: { user } }) => isSuperAdmin(user)
+const adminOnlyField = ({ req: { user } }: any) => isSuperAdmin(user)
 
 export const Users: CollectionConfig = {
   slug: 'users',
@@ -33,9 +31,7 @@ export const Users: CollectionConfig = {
     defaultColumns: ['name', 'username', 'department', 'level', 'superAdmin'],
   },
   auth: {
-    useAPIKey: true, // keep: the dashboard reads data via an API key
-    // Let people log in with their username (natalia.a) like before,
-    // while still allowing email login and keeping email optional.
+    useAPIKey: true,
     loginWithUsername: {
       allowEmailLogin: true,
       requireEmail: false,
@@ -63,8 +59,12 @@ export const Users: CollectionConfig = {
         { label: 'Sales', value: 'sales' },
         { label: 'Marketing', value: 'marketing' },
       ],
+      access: {
+        create: adminOnlyField,
+        update: adminOnlyField,
+      },
       admin: {
-        description: 'Determines which app the user sees. Sales → Packages, Marketing → Analytics.',
+        description: 'Controls application access. Only Super Admins may change this field.',
       },
     },
     {
@@ -77,8 +77,12 @@ export const Users: CollectionConfig = {
         { label: 'Manager', value: 'manager' },
         { label: 'Member', value: 'member' },
       ],
+      access: {
+        create: adminOnlyField,
+        update: adminOnlyField,
+      },
       admin: {
-        description: 'Manager sees everything in their app. Member is scoped (sales members are region-limited).',
+        description: 'Authorization level. Only Super Admins may change this field.',
       },
     },
     {
@@ -87,8 +91,12 @@ export const Users: CollectionConfig = {
       hasMany: true,
       label: 'Regions (Sales members only)',
       options: REGION_OPTIONS,
+      access: {
+        create: adminOnlyField,
+        update: adminOnlyField,
+      },
       admin: {
-        description: 'Only used for sales members. Leave empty for managers, marketing, and super-admins.',
+        description: 'Sales scope. Only Super Admins may change this field.',
         condition: (data) => data?.department === 'sales' && data?.level === 'member',
       },
     },
@@ -98,9 +106,8 @@ export const Users: CollectionConfig = {
       defaultValue: false,
       label: 'Super Admin (sees both apps)',
       access: {
-        // Only a super-admin can grant super-admin. Prevents privilege escalation.
-        update: ({ req: { user } }) => isSuperAdmin(user),
-        create: ({ req: { user } }) => isSuperAdmin(user),
+        create: adminOnlyField,
+        update: adminOnlyField,
       },
     },
   ],
