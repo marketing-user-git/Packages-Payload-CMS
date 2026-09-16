@@ -3,13 +3,38 @@ import type { GlobalConfig, Field } from 'payload'
 const isInternal = ({ req }: { req: any }) =>
   Boolean(req?.user?.superAdmin) || req?.user?.department === 'marketing'
 
-// ─────────────────────────────────────────────────────────────
-// Shared "conditions" builder — used by user-exclusions,
-// step-restrictions, and conversion-rules. Each condition is a
-// generic tag test: field / op / value. Values for in|not_in are
-// comma-separated (e.g. "China,Japan").
-// ─────────────────────────────────────────────────────────────
-const OPS = [
+export const ROW_SEQUENCE = [
+  '01_tv_account_types',
+  '02_start_trading_easy',
+  '03_know_trading_costs',
+  '04_welcome_bonus',
+  '05_trading_became_easier',
+  '06_platform_choice',
+  '07_mt5',
+  '08_account_types_reminder',
+  '09_gold',
+  '10_vanilla_options',
+  '11_tv_integration',
+  '12_easytrade',
+  '13_trade_on_mt5',
+  '14_demo_trading',
+  '15_account_types_final',
+] as const
+
+export const CNJP_SEQUENCE = [
+  '02_start_trading_easy',
+  '03_know_trading_costs',
+  '04_welcome_bonus',
+  '05_trading_became_easier',
+  '06_platform_choice',
+  '09_gold',
+  '10_vanilla_options',
+  '11_tv_integration',
+  '12_easytrade',
+  '14_demo_trading',
+] as const
+
+export const RULE_OPS = [
   { label: 'equals', value: 'equals' },
   { label: 'not equals', value: 'not_equals' },
   { label: 'in (comma list)', value: 'in' },
@@ -18,7 +43,8 @@ const OPS = [
   { label: 'greater than', value: 'greater_than' },
   { label: 'less than', value: 'less_than' },
   { label: 'exists', value: 'exists' },
-]
+  { label: 'does not exist', value: 'not_exists' },
+] as const
 
 const ruleFields = (): Field[] => [
   {
@@ -51,13 +77,19 @@ const ruleFields = (): Field[] => [
                 'OneSignal tag, e.g. STATUS, Country, Culture, CycleStatusName, TotalDepositsUSD',
             },
           },
-          { name: 'op', type: 'select', required: true, options: OPS, admin: { width: '30%' } },
+          {
+            name: 'op',
+            type: 'select',
+            required: true,
+            options: [...RULE_OPS],
+            admin: { width: '30%' },
+          },
           {
             name: 'value',
             type: 'text',
             admin: {
               width: '30%',
-              description: 'For in/not_in use a comma list. Not needed for "exists".',
+              description: 'For in/not_in use a comma list. Not needed for exists/not_exists.',
             },
           },
         ],
@@ -139,7 +171,6 @@ export const FunnelConfig: GlobalConfig = {
       ],
     },
 
-    // ── Region / app routing (operational — China/Japan) ──
     {
       type: 'collapsible',
       label: 'Region & OneSignal app routing',
@@ -147,7 +178,7 @@ export const FunnelConfig: GlobalConfig = {
         {
           name: 'cnjpCountries',
           type: 'array',
-          label: 'Countries on the compressed (11-email) sequence',
+          label: 'Countries on the compressed (10-email) sequence',
           defaultValue: [{ value: 'China' }, { value: 'Japan' }],
           fields: [{ name: 'value', type: 'text', required: true }],
         },
@@ -195,7 +226,7 @@ export const FunnelConfig: GlobalConfig = {
               type: 'text',
               admin: {
                 description:
-                  'App queried to READ tags/subscriptions at enrollment (usually the global app).',
+                  'App queried to READ tags/subscriptions at enrollment when a dedicated identity app is used.',
               },
             },
           ],
@@ -203,7 +234,6 @@ export const FunnelConfig: GlobalConfig = {
       ],
     },
 
-    // ── Sequences ──
     {
       type: 'collapsible',
       label: 'Sequences',
@@ -211,50 +241,20 @@ export const FunnelConfig: GlobalConfig = {
         {
           name: 'sequenceRow',
           type: 'array',
-          label: 'ROW sequence (ordered step_ids)',
+          label: 'ROW sequence (15 ordered step_ids)',
           fields: [{ name: 'stepId', type: 'text', required: true }],
-          defaultValue: [
-            '01_tv_account_types',
-            '02_start_trading_easy',
-            '03_know_trading_costs',
-            '04_platform_choice',
-            '05_demo_trading',
-            '07_trading_easier',
-            '08_bonus_100',
-            '09_easytrade',
-            '10_vanilla_options',
-            '12_tradingview_integration',
-            '13_account_type_reminder',
-            '15_gold',
-            '16_mt5_gold_hook',
-            '17_first_deposit',
-            '18_trade_on_mt5',
-            '19_account_types_final',
-          ].map((stepId) => ({ stepId })),
+          defaultValue: ROW_SEQUENCE.map((stepId) => ({ stepId })),
         },
         {
           name: 'sequenceCnjp',
           type: 'array',
-          label: 'CN/JP sequence (ordered step_ids)',
+          label: 'CN/JP sequence (10 ordered step_ids)',
           fields: [{ name: 'stepId', type: 'text', required: true }],
-          defaultValue: [
-            '02_start_trading_easy',
-            '03_know_trading_costs',
-            '04_platform_choice',
-            '05_demo_trading',
-            '07_trading_easier',
-            '08_bonus_100',
-            '09_easytrade',
-            '10_vanilla_options',
-            '12_tradingview_integration',
-            '15_gold',
-            '17_first_deposit',
-          ].map((stepId) => ({ stepId })),
+          defaultValue: CNJP_SEQUENCE.map((stepId) => ({ stepId })),
         },
       ],
     },
 
-    // ── Templates ──
     {
       name: 'templates',
       type: 'array',
@@ -290,7 +290,6 @@ export const FunnelConfig: GlobalConfig = {
       ],
     },
 
-    // ── EXCLUSIONS & RULES (all empty by default — you control these) ──
     {
       type: 'collapsible',
       label: 'Entry exclusions & rules',
@@ -301,33 +300,30 @@ export const FunnelConfig: GlobalConfig = {
           label: 'Restricted countries — never enter the funnel',
           fields: [{ name: 'value', type: 'text', required: true }],
         },
-
         {
           name: 'restrictionRules',
           type: 'array',
           label: 'User exclusion rules — user NEVER enters if any rule matches',
-          admin: { description: 'e.g. CycleStatusName equals Crooked. Generic tag rules.' },
+          admin: { description: 'Generic OneSignal tag rules evaluated by the orchestration layer.' },
           fields: ruleFields(),
         },
-
         {
           name: 'stepRestrictions',
           type: 'array',
           label: 'Step restrictions — block a specific email for matching users',
           admin: {
             description:
-              'User stays in the funnel but skips this step. Replaces the old CN/JP-only list; now works for any country/culture/tag.',
+              'User stays in the funnel but skips this step. Works for any country/culture/tag.',
           },
           fields: [{ name: 'stepId', type: 'text', required: true }, ...ruleFields()],
         },
-
         {
           name: 'conversionRules',
           type: 'array',
           label: 'Conversion rules — user EXITS (converted) if any rule matches',
           admin: {
             description:
-              'e.g. STATUS equals ACTIVE, OR TotalDepositsUSD greater_than 100. Checked before every send.',
+              'e.g. STATUS equals ACTIVE. Checked before every send.',
           },
           defaultValue: [
             { match: 'any', conditions: [{ field: 'STATUS', op: 'equals', value: 'ACTIVE' }] },
