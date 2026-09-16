@@ -1,6 +1,6 @@
 # RegFunnelOps — Mailgun Webhooks
 
-RegFunnelOps uses Mailgun as the source of truth for email delivery and engagement events because Mailgun is the actual email delivery provider.
+RegFunnelOps uses Mailgun as the source of truth for email delivery and engagement events because Mailgun is the actual email delivery provider. `SendLog` remains the source of truth for whether RegFunnelOps sent an email.
 
 The endpoint is:
 
@@ -10,19 +10,27 @@ Production target:
 
 `https://pkg.easy-markets.com/api/webhooks/mailgun`
 
-## Required environment variable
+## Environment
+
+Required:
 
 ```env
 MAILGUN_SIGNING_KEY=********
 ```
 
-No Mailgun API key is required for real-time webhook ingestion.
+Optional replay-window override:
 
-The same signing key is used locally and in production for the same Mailgun account/domain.
+```env
+MAILGUN_WEBHOOK_MAX_AGE_SECONDS=86400
+```
+
+The default maximum signature age is 24 hours. It is deliberately lenient so provider delays/retries are not rejected aggressively.
+
+No Mailgun API key is required for real-time webhook ingestion.
 
 ## Localhost support
 
-Mailgun cannot call `http://localhost:3000` directly because localhost is not public. The application itself works locally without any special code path; expose the local Next.js server through a public HTTPS tunnel.
+Mailgun cannot call `http://localhost:3000` directly because localhost is not public. The application itself works locally without a special code path; expose the local Next.js server through a public HTTPS tunnel.
 
 Run the app:
 
@@ -30,13 +38,13 @@ Run the app:
 pnpm dev
 ```
 
-Check the local webhook health endpoint:
+Check:
 
 ```text
 http://localhost:3000/api/webhooks/mailgun
 ```
 
-Expected response:
+Expected:
 
 ```json
 {
@@ -46,35 +54,28 @@ Expected response:
 }
 ```
 
-Then expose port 3000 with Cloudflare Tunnel:
+Then expose port 3000:
 
 ```bash
 cloudflared tunnel --url http://localhost:3000
 ```
 
-Cloudflare will return a temporary HTTPS hostname, for example:
+Use the returned HTTPS hostname plus:
 
 ```text
-https://example-random.trycloudflare.com
+/api/webhooks/mailgun
 ```
 
-Use this Mailgun webhook URL for local testing:
+Quick-tunnel URLs change when restarted. Production must use the permanent `pkg.easy-markets.com` endpoint.
 
-```text
-https://example-random.trycloudflare.com/api/webhooks/mailgun
-```
-
-A quick tunnel URL changes when the tunnel is restarted. For a permanent development endpoint, use a named Cloudflare Tunnel with a stable hostname.
-
-Mailgun supports multiple webhook URLs per event type, so production and local development can be configured at the same time. Keep the production URL and add the active tunnel URL while testing locally.
+Mailgun can have multiple URLs for an event type, so production and a temporary development tunnel can coexist while testing.
 
 ## Configure in Mailgun
 
-Use a domain-level webhook on the actual Mailgun sending domain used by the OneSignal marketing flow.
+Use a domain-level webhook on the actual sending domain used by the OneSignal marketing flow.
 
-Configure the webhook URL(s) for:
+Configure:
 
-- Accepted
 - Delivered
 - Opened
 - Clicked
@@ -83,31 +84,31 @@ Configure the webhook URL(s) for:
 - Permanent Fail
 - Temporary Fail
 
-`Delivered` is the event used by the dashboard for delivery rate.
+Do **not** configure `Accepted` for RegFunnelOps. `SendLog` is the canonical sent signal, so ingesting Mailgun Accepted would introduce a second meaning for the same stage.
 
-Opened/clicked metrics require the corresponding Mailgun tracking settings to be enabled for the sending domain.
+`Delivered` powers delivery rate. Open/click metrics require Mailgun tracking to be enabled on the sending domain.
 
-Recommended configuration while developing:
+During local development:
 
 ```text
-URL 1: https://pkg.easy-markets.com/api/webhooks/mailgun
-URL 2: https://<current-local-tunnel>.trycloudflare.com/api/webhooks/mailgun
+Production: https://pkg.easy-markets.com/api/webhooks/mailgun
+Local:      https://<current-local-tunnel>.trycloudflare.com/api/webhooks/mailgun
 ```
 
-Remove or replace URL 2 when the temporary tunnel expires.
+Remove the temporary local URL when the tunnel expires or testing ends.
 
 ## RegFunnel-only filtering
 
-The Mailgun sending domain can carry traffic unrelated to RegFunnelOps. The webhook must therefore never persist every domain event blindly.
+`ms.easy-markets.com` carries traffic unrelated to RegFunnelOps. The receiver therefore does not persist all domain events.
 
-A Mailgun event is accepted into RegFunnelOps only when both conditions are true:
+An event enters RegFunnelOps only when:
 
 1. `event-data.user-variables.notification_id` exists.
-2. That `notification_id` matches a `SendLog.notificationId` row whose result is `sent`.
+2. The value matches `SendLog.notificationId` on a row whose result is `sent`.
 
-Everything else returns HTTP 200 with `ignored: true` and is not written to the Events collection. This prevents normal marketing traffic on the same Mailgun domain from polluting RegFunnelOps analytics or triggering unnecessary template lookups.
+Everything else is acknowledged with HTTP 200 and `ignored: true` without creating an Event.
 
-Typical ignored responses:
+Typical synthetic Mailgun Test result:
 
 ```json
 {
@@ -118,30 +119,17 @@ Typical ignored responses:
 }
 ```
 
-or:
-
-```json
-{
-  "ok": true,
-  "ignored": true,
-  "reason": "unknown_notification_id",
-  "eventType": "delivered"
-}
-```
-
-Mailgun's built-in webhook Test normally does not carry a real RegFunnel notification ID, so an ignored test response is expected after this filter is enabled. A real fresh RegFunnel send is required for end-to-end validation.
+A fresh real RegFunnel send is required for end-to-end validation.
 
 ## Identity bridge
 
-The OneSignal-generated Mailgun event payload includes the custom RegFunnel variables we need:
+The OneSignal-generated Mailgun event contains RegFunnel variables such as:
 
 - `notification_id`
 - `app_id`
 - optional `region`
 
-The webhook reads these from Mailgun `user-variables` and stores the same `notification_id` on the normalized event.
-
-`notification_id` is the bridge back to `SendLog.notificationId`.
+The join is:
 
 ```text
 FunnelEnrollment
@@ -152,28 +140,31 @@ FunnelEnrollment
   -> RegFunnelOps Send Health / user timeline
 ```
 
-## Security
+## Security and idempotency
 
-Mailgun signs each webhook request. `/api/webhooks/mailgun` verifies the HMAC signature with `MAILGUN_SIGNING_KEY` before accepting the event.
+Mailgun signs every webhook. The receiver verifies HMAC SHA-256 with `MAILGUN_SIGNING_KEY`; parent signatures are also supported for account/subaccount setups.
 
-The receiver also supports Mailgun parent signatures for account/subaccount webhook setups while retaining the same HMAC verification.
+After HMAC verification, the signature timestamp must fall within the configured replay window. The default is 24 hours.
 
-Do not add a development bypass that disables signature verification. Local traffic arriving through the Cloudflare tunnel is verified exactly the same way as production traffic.
+For real provider events, Mailgun's event `id` is stored as `Events.providerEventId`. That field has a database unique index. This means an exact webhook retry/replay cannot create a second raw event or increment the analytics rollup twice, including if two identical requests race concurrently.
+
+Do not add a localhost/development bypass for signature verification. Local tunnel traffic follows the same checks as production.
 
 ## Validation
 
-1. Run Payload/Next locally with `MAILGUN_SIGNING_KEY` present.
-2. Verify `GET http://localhost:3000/api/webhooks/mailgun` returns `signingKeyConfigured: true`.
-3. Start the Cloudflare tunnel and add its HTTPS Mailgun webhook URL.
-4. Use Mailgun Test and confirm the endpoint returns HTTP 200. An ignored `missing_notification_id` response is expected for the synthetic test payload.
-5. Send a fresh RegFunnelOps test email through the normal Sender workflow.
-6. Confirm `SendLog` contains a non-empty `notificationId`.
-7. Wait for Mailgun `delivered`.
-8. Confirm the local `events` collection receives an event with the same `notificationId` and `eventType=delivered`.
-9. Refresh local RegFunnelOps.
-10. Confirm Send Health shows delivered data and the delivery-tracking warning disappears.
-11. Open `/regfunnel/enrollment/{id}` and confirm delivery/open/click events appear in the activity timeline.
+1. Run Payload/Next with `MAILGUN_SIGNING_KEY` present.
+2. Confirm the GET health endpoint returns `signingKeyConfigured: true`.
+3. Expose localhost through Cloudflare when testing locally.
+4. Mailgun Test should return HTTP 200; `missing_notification_id` is expected for its synthetic payload.
+5. Send a fresh email through the normal RegFunnel Sender.
+6. Confirm `SendLog.notificationId` is populated.
+7. Wait for `delivered`.
+8. Confirm Events contains the same `notificationId`, `eventType=delivered`, and a provider event ID.
+9. Open and click the message and verify `opened` and `clicked` events.
+10. Refresh RegFunnelOps and confirm delivery tracking is available.
+11. Open `/regfunnel/enrollment/{id}` and confirm the timeline contains the events.
+12. If testing retries, replaying the same provider event ID must not create another Events row or increase rollups.
 
 ## Existing test data
 
-Webhook tracking is real-time. Old sends that happened before the webhook was configured will not automatically gain delivery events. Validate the integration with a fresh send.
+Webhook tracking is real-time. Sends that happened before the webhook was configured are not backfilled automatically.
