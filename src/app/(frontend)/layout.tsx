@@ -1,6 +1,7 @@
 import React from 'react'
 import './styles.css'
 import './app-shell-polish.css'
+import './regfunnel-nav-polish.css'
 
 export const metadata = {
   description: 'easyMarkets internal marketing operations and analytics workspace.',
