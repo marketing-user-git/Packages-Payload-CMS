@@ -4,7 +4,7 @@ const isInternal = ({ req }: { req: any }) =>
   Boolean(req?.user?.superAdmin) || req?.user?.department === 'marketing'
 
 // Raw analytics events — the source of truth for delivery and engagement.
-// Fed by Mailgun and OneSignal Event Streams. Dashboard/API access remains internal-only.
+// Fed by Mailgun and OneSignal. Dashboard/API access remains internal-only.
 const Events: CollectionConfig = {
   slug: 'events',
   admin: {
@@ -14,7 +14,7 @@ const Events: CollectionConfig = {
   },
   access: {
     read: isInternal,
-    create: ({ req: { user } }) => Boolean(user?.superAdmin), // webhooks use overrideAccess
+    create: ({ req: { user } }) => Boolean(user?.superAdmin),
     update: ({ req: { user } }) => Boolean(user?.superAdmin),
     delete: ({ req: { user } }) => Boolean(user?.superAdmin),
   },
@@ -35,8 +35,15 @@ const Events: CollectionConfig = {
       name: 'eventType', type: 'select', required: true,
       options: ['accepted', 'delivered', 'opened', 'clicked', 'bounced_hard', 'bounced_soft', 'complained', 'unsubscribed', 'failed'],
     },
+    {
+      name: 'providerEventId',
+      type: 'text',
+      unique: true,
+      index: true,
+      admin: { description: 'Provider event ID. Used to make webhook retries idempotent.' },
+    },
     { name: 'recipient', type: 'text', index: true, admin: { description: 'Email address or push subscription target.' } },
-    { name: 'messageId', type: 'text', index: true, admin: { description: 'Provider event/message key used for deduplication.' } },
+    { name: 'messageId', type: 'text', index: true, admin: { description: 'Provider message key used for per-message uniqueness.' } },
     { name: 'notificationId', type: 'text', index: true, admin: { description: 'OneSignal message/notification ID — join key to SendLog.' } },
     { name: 'templateKey', type: 'text', admin: { description: 'Canonical template key.' } },
     { name: 'templateId', type: 'text', admin: { description: 'Raw provider template ID.' } },
