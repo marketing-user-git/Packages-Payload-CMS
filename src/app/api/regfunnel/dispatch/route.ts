@@ -8,9 +8,9 @@ export const dynamic = 'force-dynamic'
 
 // Private service endpoint. Set REGFUNNEL_SENDER_TOKEN (32+ random chars) on Payload
 // and use x-regfunnel-token in a dedicated n8n credential. Never expose in browser.
-type Tx = { execute(query: unknown): Promise<{ rows: any[] }> }
+type Tx = { execute(query: unknown): Promise<{ rows: any[] } | any[]> }
 type Result = Record<string, unknown>
-const rows = async (tx: Tx, q: unknown): Promise<any[]> => (await tx.execute(q)).rows
+const rows = async (tx: Tx, q: unknown): Promise<any[]> => { const r = await tx.execute(q); return Array.isArray(r) ? r : r.rows }
 const first = async (tx: Tx, q: unknown): Promise<any> => (await rows(tx, q))[0]
 const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
 const minutesOld = (v: unknown) => (Date.now() - new Date(String(v)).getTime()) / 60000
@@ -75,7 +75,7 @@ async function claim(tx: Tx, b: any): Promise<Result> {
   }
   // Ambiguous legacy errors should not be resent without a provider reconciliation.
   const oldError = await first(tx, sql`SELECT id FROM send_log
-    WHERE external_id = ${u.external_id} AND step_id = ${step} AND result = 'error' LIMIT 1`)
+    WHERE external_id = ${u.external_id} AND step_id = ${step} AND result = 'error'\n      AND COALESCE(error_detail, '') <> 'no_template_or_app_id' LIMIT 1`)
   if (oldError) {
     await tx.execute(sql`UPDATE funnel_enrollment SET paused=true, next_send_at=NULL, updated_at=now()
       WHERE id=${u.id} AND send_index=${b.expectedSendIndex}`)
