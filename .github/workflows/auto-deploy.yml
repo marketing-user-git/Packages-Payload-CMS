@@ -53,7 +53,7 @@ jobs:
         run: pnpm dlx eslint@9.39.1 .
 
       - name: RegFunnel production invariant tests
-        run: pnpm exec vitest run tests/int/regfunnel-production.int.spec.ts --config ./vitest.config.mts
+        run: pnpm exec vitest run tests/int/regfunnel-production.int.spec.ts tests/int/regfunnel-dispatch.int.spec.ts --config ./vitest.config.mts
 
       - name: Production build
         run: pnpm build
