@@ -1,6 +1,6 @@
 # RegFunnelOps Atomic Sender — Staging rollout
 
-**Status: CODE DRAFT / NOT DEPLOYED / NO LIVE TESTS.** Do not merge, deploy, or enable the n8n schedule before the acceptance checks below.
+**Status: CODE DRAFT / NOT DEPLOYED / NO STAGING E2E TESTS.** Do not merge, deploy, or enable the n8n schedule before the acceptance checks below.
 
 ## What changed
 
@@ -24,8 +24,8 @@ The current `FunnelEnrollment.externalId` is `unique: true`, so no re-entry is a
 2. Backup PostgreSQL. Run read-only audit to verify production tables, enum types, unique indexes, current enrollment progress and SendLog #33265.
 3. Apply migration `20261025_150000_regfunnel_atomic_claims` in **staging**. Verify its tables and constraints.
 4. Set `REGFUNNEL_SENDER_TOKEN` (cryptographically random, 32+ characters) in the Payload server environment. Restart/stage-deploy the backend.
-5. Import `RegFunnelOps_2_Atomic_Sender_STAGING.json` as a **new, inactive** n8n workflow. Configure the **three** HTTP nodes `Atomic Claim`, `Atomic Begin` and `Atomic Finalize` with an HTTP Header Auth credential: header name `x-regfunnel-token`, value exactly the server token.
-6. Verify that the original OneSignal Global/China credentials are mapped to the copied workflow's send and completion-tag nodes. Verify the existing Payload API Key credential for all original non-atomic collection/global nodes.
+5. Import **`RegFunnelOps_2_Atomic_Sender_STAGING_SAFE_v3.json`** as a **new, inactive** workflow. This safe export intentionally uses `payload-staging.invalid` and `onesignal-test-only.invalid` placeholder hosts, and **contains no credentials**. Never restore production URLs/credentials in staging. Do not use older v1/v2 exports for live execution.
+6. Replace only the placeholders with the verified staging Payload URL and OneSignal API URL; configure a **separate staging PostgreSQL database** and **test-only OneSignal apps/recipients**. Set Header Auth credential `x-regfunnel-token` for `Atomic Claim`, `Atomic Begin`, `Atomic Finalize` and map dedicated staging Payload and OneSignal credentials for all other active HTTP nodes. Never test against `pkg.easy-markets.com`.
 7. In an isolated staging DB and test OneSignal app, test all cases below. A copied production DB must have identifiers replaced or sending blocked.
 8. Add monitoring / notification for `needs_review` and for paused enrollments (the staging workflow currently logs a warning instead of sending Telegram).
 9. Only after QA, roll out using initially 50 due users per run and a 30-minute schedule. Observe results and backlogs; move to 10 minutes only after race tests and operational monitoring are green.
@@ -52,7 +52,7 @@ The old `Already Sent?`, `Insert SendLog`, `Compute Next` and `Advance` nodes re
 - Final step: state becomes `completed`, `next_send_at=NULL`, and the completion tag is applied (or alerted/reconciled if tagging fails).
 - Conversion/exclusion during sending: never reverts an already converted/excluded enrollment.
 - `Events` analytics still joins on legacy `send_log.notification_id`.
-- Run `pnpm build`, migrations on staging Postgres and n8n real HTTP integration tests. These have **not** been run here.
+- Run `pnpm build`, migrations on staging Postgres and n8n real HTTP integration tests. CI build plus mocked endpoint safety regression tests passed on 2026-10-26; **staging database/concurrent-send E2E tests have not been run**.
 
 ## Follow-up requirements
 
@@ -61,3 +61,12 @@ The old `Already Sent?`, `Insert SendLog`, `Compute Next` and `Advance` nodes re
 - Confirm the live database's index definitions. The repository has a partial unique index over `send_log (external_id,step_id) WHERE result='sent'`.
 - Confirm timezone and the current `interval_days` config before enabling.
 - Block manual execution of production OneSignal nodes when validating node expressions.
+
+## Code review fixes (2026-10-26)
+
+- Fixed an escaped newline in the legacy error SQL query that would have failed claim processing.
+- `begin` now locks the enrollment before the claim and refuses to dispatch when converted, paused, excluded, or moved to another send index.
+- `finalize` preserves existing successful `send_log` rows and quarantines conflicting notification IDs for manual review.
+- Invalid UUID claim tokens fail before SQL execution.
+- Added `tests/int/regfunnel-dispatch.int.spec.ts` to pull-request CI. These tests mock DB responses, so they **do not** establish real PostgreSQL concurrency safety.
+- CI on the review branch passed lint, Vitest and build. **Merge to `main` triggers automatic production deploy via self-hosted Actions runner. Do not merge until staging acceptance and a reviewed cutover plan are complete.**
