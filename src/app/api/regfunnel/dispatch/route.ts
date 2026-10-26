@@ -13,6 +13,8 @@ type Result = Record<string, unknown>
 const rows = async (tx: Tx, q: unknown): Promise<any[]> => { const r = await tx.execute(q); return Array.isArray(r) ? r : r.rows }
 const first = async (tx: Tx, q: unknown): Promise<any> => (await rows(tx, q))[0]
 const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
+const uuid = (v: unknown): v is string =>
+  typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 const minutesOld = (v: unknown) => (Date.now() - new Date(String(v)).getTime()) / 60000
 
 function auth(request: Request): boolean {
@@ -75,7 +77,8 @@ async function claim(tx: Tx, b: any): Promise<Result> {
   }
   // Ambiguous legacy errors should not be resent without a provider reconciliation.
   const oldError = await first(tx, sql`SELECT id FROM send_log
-    WHERE external_id = ${u.external_id} AND step_id = ${step} AND result = 'error'\n      AND COALESCE(error_detail, '') <> 'no_template_or_app_id' LIMIT 1`)
+    WHERE external_id = ${u.external_id} AND step_id = ${step} AND result = 'error'
+      AND COALESCE(error_detail, '') <> 'no_template_or_app_id' LIMIT 1`)
   if (oldError) {
     await tx.execute(sql`UPDATE funnel_enrollment SET paused=true, next_send_at=NULL, updated_at=now()
       WHERE id=${u.id} AND send_index=${b.expectedSendIndex}`)
@@ -123,22 +126,38 @@ async function claim(tx: Tx, b: any): Promise<Result> {
 }
 
 async function begin(tx: Tx,b:any):Promise<Result> {
-  if (!integer(b.claimId) || typeof b.claimToken !== 'string') return { action:'invalid' }
-  const c = await first(tx, sql`UPDATE regfunnel_dispatch_claim
+  if (!integer(b.claimId) || b.claimId === 0 || !uuid(b.claimToken)) return { action:'invalid' }
+  // Lock in the same order as claim/finalize (enrollment, then claim).
+  // A conversion, exclusion or pause between claim and begin must prevent sending.
+  const identity = await first(tx, sql`SELECT enrollment_id FROM regfunnel_dispatch_claim WHERE id=${b.claimId}`)
+  if (!identity) return { action:'not_found' }
+  const u = await first(tx, sql`SELECT * FROM funnel_enrollment
+    WHERE id=${identity.enrollment_id} FOR UPDATE`)
+  if (!u) return { action:'fenced' }
+  const c = await first(tx, sql`SELECT * FROM regfunnel_dispatch_claim
+    WHERE id=${b.claimId} FOR UPDATE`)
+  if (!c || c.claim_token !== b.claimToken || c.status !== 'claimed') {
+    return { action:'fenced' }
+  }
+  if (u.state !== 'in_progress' || u.paused || u.excluded ||
+      Number(u.send_index) !== Number(c.send_index)) {
+    return { action:'fenced' }
+  }
+  const started = await first(tx, sql`UPDATE regfunnel_dispatch_claim
     SET status='dispatching',dispatch_started_at=now(),updated_at=now()
-    WHERE id=${b.claimId} AND claim_token=${b.claimToken}::uuid AND status='claimed'
+    WHERE id=${c.id} AND claim_token=${b.claimToken}::uuid AND status='claimed'
     RETURNING *`)
-  if (!c) return { action:'fenced' }
+  if (!started) return { action:'fenced' }
   await tx.execute(sql`INSERT INTO regfunnel_dispatch_attempt
     (claim_id,claim_token,idempotency_key,result)
-    VALUES (${c.id},${c.claim_token}::uuid,${c.idempotency_key}::uuid,'dispatching')`)
-  return { action:'send',claimId:c.id,claimToken:c.claim_token,
-    idempotencyKey:c.idempotency_key,externalId:c.external_id,stepId:c.step_id,
-    variant:c.variant,osApp:c.os_app,templateId:c.template_id,appId:c.app_id }
+    VALUES (${started.id},${started.claim_token}::uuid,${started.idempotency_key}::uuid,'dispatching')`)
+  return { action:'send',claimId:started.id,claimToken:started.claim_token,
+    idempotencyKey:started.idempotency_key,externalId:started.external_id,stepId:started.step_id,
+    variant:started.variant,osApp:started.os_app,templateId:started.template_id,appId:started.app_id }
 }
 
 async function finalize(tx: Tx,b:any):Promise<Result> {
-  if (!integer(b.claimId) || typeof b.claimToken !== 'string') return { action:'invalid' }
+  if (!integer(b.claimId) || b.claimId === 0 || !uuid(b.claimToken)) return { action:'invalid' }
   const identity = await first(tx, sql`SELECT enrollment_id FROM regfunnel_dispatch_claim WHERE id=${b.claimId}`)
   if (!identity) return { action:'not_found' }
   // Same lock order as claim: enrollment followed by claim.
@@ -158,13 +177,23 @@ async function finalize(tx: Tx,b:any):Promise<Result> {
     (claim_id,claim_token,idempotency_key,result,notification_id,error_detail)
     VALUES (${c.id},${c.claim_token}::uuid,${c.idempotency_key}::uuid,${result},${notificationId || null},${detail})`)
 
-  const old = await first(tx, sql`SELECT id,result FROM send_log
+  const old = await first(tx, sql`SELECT id,result,notification_id FROM send_log
     WHERE external_id=${c.external_id} AND step_id=${c.step_id}
     ORDER BY CASE WHEN result='sent' THEN 0 ELSE 1 END,id DESC LIMIT 1 FOR UPDATE`)
-  if (old?.result === 'sent' && result !== 'sent') {
-    throw new Error('Legacy sent row conflicts with outcome')
+  if (old?.result === 'sent' && (result !== 'sent' || old.notification_id !== notificationId)) {
+    // An old or parallel sender already claimed success. Never replace that
+    // analytics notification ID or advance on a conflicting provider result.
+    await tx.execute(sql`UPDATE regfunnel_dispatch_claim
+      SET status='needs_review',updated_at=now(),completed_at=now()
+      WHERE id=${c.id} AND claim_token=${b.claimToken}::uuid`)
+    await tx.execute(sql`UPDATE funnel_enrollment
+      SET paused=true,next_send_at=NULL,updated_at=now()
+      WHERE id=${u.id} AND send_index=${c.send_index} AND state='in_progress'`)
+    return { action:'needs_review',reason:'conflicting_sent_log',claimId:c.id }
   }
-  if (old) {
+  if (old?.result === 'sent') {
+    // Exact same successful notification. Preserve the original analytics row.
+  } else if (old) {
     await tx.execute(sql`UPDATE send_log SET result=${result}::enum_send_log_result,
       notification_id=${notificationId || null},attempted_at=now(),
       error_detail=${detail},updated_at=now()
